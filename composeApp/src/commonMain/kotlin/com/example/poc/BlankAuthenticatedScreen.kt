@@ -1,9 +1,12 @@
 package com.example.poc
 
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -18,8 +21,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
@@ -28,150 +33,251 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun BlankAuthenticatedScreen() {
-    val sidebarContainerColor = Color(0xFFCDD3DB)
-    val sidebarBorderColor = Color(0xFFB4BCC8)
-    val sidebarCardColor = Color(0xFFB6BEC9)
+fun BlankAuthenticatedScreen(
+    platformServices: PlatformServices = PreviewPlatformServices(),
+) {
     val sidebarPrimaryTextColor = Color(0xFF1F2937)
     val sidebarSecondaryTextColor = Color(0xFF475569)
+    val drawerBackground = Color(0xFFCDD3DB)
+    val navItemColor = Color(0xFFB6BEC9)
     var sidebarExpanded by rememberSaveable { mutableStateOf(false) }
-    val interactionSource = remember { MutableInteractionSource() }
-    val sidebarWidth by animateDpAsState(
-        targetValue = if (sidebarExpanded) 220.dp else 92.dp,
-        animationSpec = tween(durationMillis = 220),
-        label = "passkey-sidebar-width",
-    )
-    val showExpandedLabels = sidebarWidth >= 176.dp
+
+    // ── Reactive entries: collect StateFlow if available, fallback to lifecycle refresh ──
+    val entries by platformServices.entriesFlow.collectAsState()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(Color(0xFFF8FAFC))
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        Row(
+        // ── Main content — equal 16dp padding on all sides ────────────
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Top bar row: hamburger (hidden when drawer open) + title
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // Circular hamburger — only visible when drawer is closed
+                if (!sidebarExpanded) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .shadow(6.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(Color(0xFF374151))
+                            .clickable { sidebarExpanded = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        HamburgerIcon(tint = Color.White)
+                    }
+                } else {
+                    // Placeholder same size so title doesn't jump
+                    Spacer(modifier = Modifier.size(44.dp))
+                }
+
+                Text(
+                    text = "Saved Passwords",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1F2937),
+                )
+            }
+
+            // Passwords list — fills remaining space with equal side padding
+            SavedPasswordsScreen(
+                entries = entries,
+                onSave = { entry ->
+                    platformServices.savePasswordEntry(entry)
+                    // StateFlow auto-updates the UI — no manual reload needed
+                },
+                onDelete = { id ->
+                    platformServices.deletePasswordEntry(id)
+                    // StateFlow auto-updates the UI — no manual reload needed
+                },
+                headerContent = { PlatformPasswordHeader() },
+            )
+        }
+
+        // ── Scrim — tap outside drawer to close ───────────────────────
+        AnimatedVisibility(
+            visible = sidebarExpanded,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(200)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.38f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { sidebarExpanded = false },
+            )
+        }
+
+        // ── Slide-in Drawer ────────────────────────────────────────────
+        AnimatedVisibility(
+            visible = sidebarExpanded,
+            enter = slideInHorizontally(tween(260)) { -it },
+            exit = slideOutHorizontally(tween(210)) { -it },
         ) {
             Surface(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(sidebarWidth)
-                    .border(
-                        width = 1.dp,
-                        color = sidebarBorderColor,
-                        shape = RoundedCornerShape(30.dp),
-                    )
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                    ) { sidebarExpanded = !sidebarExpanded },
-                shape = RoundedCornerShape(30.dp),
-                color = sidebarContainerColor,
+                    .width(270.dp),
+                shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+                color = drawerBackground,
+                shadowElevation = 14.dp,
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp, vertical = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                        .padding(horizontal = 20.dp, vertical = 28.dp),
                 ) {
+                    // Header row: circular hamburger (closes drawer) + "Menu" label
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (showExpandedLabels) Arrangement.Start else Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        PassKeyLogo(
-                            size = 52.dp,
-                            cornerRadius = 16.dp,
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .shadow(4.dp, CircleShape)
+                                .clip(CircleShape)
+                                .background(Color(0xFF374151))
+                                .clickable { sidebarExpanded = false },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            HamburgerIcon(tint = Color.White)
+                        }
+                        Text(
+                            text = "Menu",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = sidebarPrimaryTextColor,
                         )
-                        if (showExpandedLabels) {
-                            Spacer(modifier = Modifier.width(12.dp))
+                    }
+
+                    Spacer(Modifier.height(28.dp))
+
+                    // App branding
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PassKeyLogo(size = 46.dp, cornerRadius = 14.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = AppName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = sidebarPrimaryTextColor,
+                            )
+                            Text(
+                                text = AppTagline,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = sidebarSecondaryTextColor,
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // Divider
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(Color(0xFFB4BCC8)),
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Nav item — Passwords
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { sidebarExpanded = false },
+                        shape = RoundedCornerShape(16.dp),
+                        color = navItemColor,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Passwords",
+                                tint = sidebarPrimaryTextColor,
+                                modifier = Modifier.size(22.dp),
+                            )
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = AppName,
-                                    style = MaterialTheme.typography.titleMedium,
+                                    text = "Passwords",
+                                    style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = sidebarPrimaryTextColor,
                                 )
                                 Text(
-                                    text = "Tap to collapse",
+                                    text = "Saved credentials",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = sidebarSecondaryTextColor,
                                 )
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = sidebarCardColor,
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 14.dp),
-                            horizontalArrangement = if (showExpandedLabels) Arrangement.Start else Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "PassKey",
-                                tint = sidebarPrimaryTextColor,
-                            )
-                            if (showExpandedLabels) {
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(
-                                        text = "PassKey",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = sidebarPrimaryTextColor,
-                                    )
-                                    Text(
-                                        text = "Vault workspace",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = sidebarSecondaryTextColor,
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    if (showExpandedLabels) {
-                        Text(
-                            text = AppTagline,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = sidebarSecondaryTextColor,
-                        )
-                    } else {
-                        Text(
-                            text = ">",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = sidebarSecondaryTextColor,
-                        )
-                    }
                 }
-            }
             }
         }
     }
+}
+
+@Composable
+private fun HamburgerIcon(tint: Color) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.size(20.dp),
+    ) {
+        repeat(3) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(tint, RoundedCornerShape(2.dp)),
+            )
+        }
+    }
+}

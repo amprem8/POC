@@ -140,7 +140,18 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                         },
                     )
 
-                    PassKeyRoute.Main -> BlankAuthenticatedScreen()
+                    PassKeyRoute.Main -> BlankAuthenticatedScreen(platformServices = platformServices)
+
+                    PassKeyRoute.Onboarding -> PlatformOnboardingScreen(
+                        onFinish = {
+                            // Mark onboarding seen, persist, then go to Main vault
+                            val cfg = platformServices.loadPassKeyConfig()
+                            if (cfg != null) {
+                                platformServices.savePassKeyConfig(cfg.copy(onboardingSeen = true))
+                            }
+                            uiState = uiState.copy(route = PassKeyRoute.Main)
+                        }
+                    )
                 }
             }
         }

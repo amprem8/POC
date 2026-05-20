@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">PassKey</string>
+    <string name="accessibility_service_description">PassKey monitors browser login forms to save and autofill your passwords securely.</string>
 </resources>

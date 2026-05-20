@@ -30,6 +30,8 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.biometric)
             implementation(libs.androidx.fragment.ktx)
+            implementation(libs.androidx.credentials)
+            implementation(libs.androidx.credentials.play)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

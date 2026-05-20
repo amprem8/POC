@@ -10,6 +10,7 @@ enum class PassKeyRoute {
     Login,
     ForgotPassword,
     ResetPassword,
+    Onboarding,   // First-time permission setup (shown once after first login)
     Main,
 }
 
@@ -23,6 +24,7 @@ data class PassKeyConfig(
     val biometricEnabled: Boolean,
     val recoveryPhrase: String,
     val recoveryPhraseAcknowledged: Boolean,
+    val onboardingSeen: Boolean = false,   // true after user completes the first-time setup flow
 )
 
 data class PassKeyUiState(
@@ -143,9 +145,11 @@ class VaultAppController(
         pendingSetup = null
         biometricSetupRequired = false
 
+        // First-time user: route to onboarding after recovery phrase step
+        val targetRoute = if (!updatedConfig.onboardingSeen) PassKeyRoute.Onboarding else PassKeyRoute.Main
         return PassKeyActionResult(
             uiState = PassKeyUiState(
-                route = PassKeyRoute.Main,
+                route = targetRoute,
                 biometricAvailable = biometricAvailable,
                 biometricEnabled = updatedConfig.biometricEnabled,
             ),
@@ -165,9 +169,10 @@ class VaultAppController(
         }
 
         return if (password == config.masterPassword) {
+            val target = if (!config.onboardingSeen) PassKeyRoute.Onboarding else PassKeyRoute.Main
             PassKeyActionResult(
                 uiState = PassKeyUiState(
-                    route = PassKeyRoute.Main,
+                    route = target,
                     biometricAvailable = biometricAvailable,
                     biometricEnabled = config.biometricEnabled,
                 ),
@@ -182,9 +187,10 @@ class VaultAppController(
     fun unlockWithBiometric(): PassKeyActionResult {
         val config = currentConfig
         return if (config?.biometricEnabled == true) {
+            val target = if (!config.onboardingSeen) PassKeyRoute.Onboarding else PassKeyRoute.Main
             PassKeyActionResult(
                 uiState = PassKeyUiState(
-                    route = PassKeyRoute.Main,
+                    route = target,
                     biometricAvailable = biometricAvailable,
                     biometricEnabled = true,
                 ),
@@ -276,9 +282,10 @@ class VaultAppController(
         currentConfig = updatedConfig
         recoveryVerified = false
 
+        val target = if (!updatedConfig.onboardingSeen) PassKeyRoute.Onboarding else PassKeyRoute.Main
         return PassKeyActionResult(
             uiState = PassKeyUiState(
-                route = PassKeyRoute.Main,
+                route = target,
                 biometricAvailable = biometricAvailable,
                 biometricEnabled = updatedConfig.biometricEnabled,
                 message = PassKeyMessage("Master password updated successfully."),

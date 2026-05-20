@@ -4,6 +4,9 @@ import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHomeDirectory
@@ -16,14 +19,19 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 private const val PassKeyConfigKey = "passkey_config"
+private const val PasswordEntriesKey = "password_entries"
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IOSPlatformServices : PlatformServices {
     private val defaults = NSUserDefaults.standardUserDefaults
+    private val _entries = MutableStateFlow<List<PasswordEntry>>(emptyList())
 
     override val serverBaseUrl: String = "http://127.0.0.1:$SERVER_PORT"
     override val biometricAvailable: Boolean
         get() = LAContext().canEvaluatePolicy(LAPolicyDeviceOwnerAuthenticationWithBiometrics, null)
+    override val entriesFlow: StateFlow<List<PasswordEntry>> = _entries.asStateFlow()
+
+    init { _entries.value = loadPasswordEntries() }
 
     override fun loadPassKeyConfig(): PassKeyConfig? {
         return decodePassKeyConfig(defaults.stringForKey(PassKeyConfigKey))
@@ -59,6 +67,49 @@ class IOSPlatformServices : PlatformServices {
         NSFileManager.defaultManager.createFileAtPath(path, content.encodeToByteArray().toNSData(), null)
         return "Saved recovery file to $path"
     }
+
+    override fun loadPasswordEntries(): List<PasswordEntry> {
+        val json = defaults.stringForKey(PasswordEntriesKey) ?: return emptyList()
+        return try {
+            json.split("||ENTRY||").filter { it.isNotBlank() }.map { entryStr ->
+                val map = entryStr.split("||FIELD||").associate {
+                    val idx = it.indexOf('=')
+                    it.substring(0, idx) to it.substring(idx + 1)
+                }
+                PasswordEntry(
+                    id = map["id"] ?: "",
+                    siteName = map["siteName"] ?: "",
+                    username = map["username"] ?: "",
+                    password = map["password"] ?: "",
+                    loginUrl = map["loginUrl"] ?: "",
+                    dateModified = map["dateModified"]?.toLongOrNull() ?: 0L,
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    override fun savePasswordEntry(entry: PasswordEntry) {
+        val current = loadPasswordEntries().toMutableList()
+        current.removeAll { it.id == entry.id }
+        current.add(entry)
+        defaults.setObject(encodeEntries(current), forKey = PasswordEntriesKey)
+        _entries.value = current
+    }
+
+    override fun deletePasswordEntry(id: String) {
+        val current = loadPasswordEntries().filter { it.id != id }
+        defaults.setObject(encodeEntries(current), forKey = PasswordEntriesKey)
+        _entries.value = current
+    }
+
+    private fun encodeEntries(entries: List<PasswordEntry>): String =
+        entries.joinToString("||ENTRY||") { e ->
+            listOf("id=${e.id}", "siteName=${e.siteName}", "username=${e.username}",
+                   "password=${e.password}", "loginUrl=${e.loginUrl}", "dateModified=${e.dateModified}")
+                .joinToString("||FIELD||")
+        }
 }
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
