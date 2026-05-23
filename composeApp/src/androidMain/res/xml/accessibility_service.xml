@@ -1,27 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    PassKey Accessibility Service configuration.
 
-    KEY FIX: packageNames restriction REMOVED.
-    Restricting to specific package names means the service silently ignores any
-    browser variant (Chrome Stable vs Chrome for Android vs WebView shell etc.)
-    whose package name is not in the list. Removing the restriction monitors ALL
-    foreground apps — the Kotlin code already filters to BROWSER_PACKAGES at runtime.
-
-    flagRequestEnhancedWebAccessibility  → grants access to web content inside Chrome WebView
-    flagReportViewIds                    → allows reading view resource IDs (used for URL bar)
-    flagRetrieveInteractiveWindows       → access to ALL windows (including Chrome's infobar overlay)
-    canRetrieveWindowContent="true"      → required to read text from Chrome's DOM
-    canRequestFilterKeyEvents="true"     → needed on some builds to receive text events
-
-    typeViewClicked added so we also get events when buttons inside Chrome's
-    "Save password?" infobar are clicked — lets us detect + act on that dialog.
--->
 <accessibility-service
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/accessibility_service_description"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewFocused|typeViewTextChanged|typeViewClicked"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged|typeViewClicked"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagRequestEnhancedWebAccessibility"
+    android:notificationTimeout="50"
     android:canRetrieveWindowContent="true"
-    android:notificationTimeout="100" />
+    android:canRequestFilterKeyEvents="true"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagRequestEnhancedWebAccessibility"/>

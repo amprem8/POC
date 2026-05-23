@@ -9,6 +9,7 @@
     <!-- Overlay permission: show floating "Save to PassKey?" bubble over Chrome -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+
     <application
         android:name=".PassKeyApplication"
         android:allowBackup="false"
@@ -51,15 +52,6 @@
         <!-- Credential Manager: save activity -->
         <activity
             android:name=".CredentialSaveActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
-            android:excludeFromRecents="true"
-            android:taskAffinity=""
-            tools:targetApi="26" />
-
-        <!-- Fallback manual save activity when Chrome masks password text -->
-        <activity
-            android:name=".ManualSaveActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"

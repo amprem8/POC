@@ -1,17 +1,11 @@
 package com.example.poc
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.assist.AssistStructure
-import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.os.CancellationSignal
 import android.service.autofill.AutofillService
 import android.service.autofill.Dataset
 import android.service.autofill.FillCallback
-import android.service.autofill.FillContext
 import android.service.autofill.FillRequest
 import android.service.autofill.FillResponse
 import android.service.autofill.SaveCallback
@@ -22,9 +16,6 @@ import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
 import android.widget.RemoteViews
 import androidx.annotation.RequiresApi
-import androidx.core.app.NotificationCompat
-import org.json.JSONArray
-import org.json.JSONObject
 
 @RequiresApi(Build.VERSION_CODES.O)
 class PassKeyAutofillService : AutofillService() {
@@ -41,10 +32,6 @@ class PassKeyAutofillService : AutofillService() {
     }
 
     private fun loadEntries(): List<PasswordEntry> = PasswordRepository.snapshot()
-
-    private fun saveEntry(entry: PasswordEntry) {
-        PasswordRepository.saveRaw(this, entry)
-    }
 
     // ── onFillRequest — called every time a text field is focused in Chrome ─
 
@@ -73,7 +60,6 @@ class PassKeyAutofillService : AutofillService() {
         Log.d(TAG, "Matching entries for '$url': ${matchingEntries.size}")
 
         val responseBuilder = FillResponse.Builder()
-        var hasDataset = false
 
         // ── Add one dataset chip per matching saved credential ─────────
         matchingEntries.forEach { entry ->
@@ -95,7 +81,6 @@ class PassKeyAutofillService : AutofillService() {
                 )
             }
             responseBuilder.addDataset(datasetBuilder.build())
-            hasDataset = true
         }
 
         // ── SaveInfo — ALWAYS attached so save prompt fires on submit ──
@@ -120,43 +105,115 @@ class PassKeyAutofillService : AutofillService() {
 
     // ── onSaveRequest — fired after form submit, saves to SharedPrefs ──────
 
-    override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
-        val structure = request.fillContexts.last().structure
-        val parsed = ParsedLoginForm.from(structure)
-        Log.d(TAG, "onSaveRequest — domain:${parsed.webDomain} pkg:${parsed.packageName}")
+    override fun onSaveRequest(
+        request: SaveRequest,
+        callback: SaveCallback
+    ) {
 
-        val username = parsed.usernameId?.let { getNodeValue(structure, it) }?.trim() ?: ""
-        val password = parsed.passwordId?.let { getNodeValue(structure, it) }?.trim() ?: ""
-        val domain = parsed.webDomain?.takeIf { it.isNotBlank() }
-            ?: parsed.packageName
-            ?: "unknown"
-        val siteName = domainToSiteName(domain)
+        try {
 
-        Log.d(TAG, "Saving: site=$siteName user=$username pwd=${if (password.isNotEmpty()) "***" else "(empty)"}")
+            if (!PassKeyAccessibilityService.userApprovedPendingSave) {
 
-        if (username.isNotBlank() || password.isNotBlank()) {
+                Log.i(TAG, "User did not approve save")
+
+                callback.onSuccess()
+                return
+            }
+
+            val structure =
+                request.fillContexts.last().structure
+
+            val parsed =
+                ParsedLoginForm.from(structure)
+
+            val username =
+                parsed.usernameId?.let {
+                    getNodeValue(structure, it)
+                }?.trim().orEmpty()
+
+            val password =
+                parsed.passwordId?.let {
+                    getNodeValue(structure, it)
+                }?.trim().orEmpty()
+
+            val domain =
+                parsed.webDomain
+                    ?: parsed.packageName
+                    ?: "unknown"
+
+            val resolvedUsername = username.ifBlank {
+                PassKeyAccessibilityService.pendingSaveUsername.trim()
+            }
+            val resolvedPassword = password.ifBlank {
+                PassKeyAccessibilityService.pendingSavePassword.trim()
+            }
+            val resolvedDomain = domain.takeIf { it.isNotBlank() && it != "unknown" }
+                ?: PassKeyAccessibilityService.pendingSaveDomain.trim().ifBlank { "unknown" }
+
+            Log.i(
+                TAG,
+                "Save candidate rawUser='${username.take(40)}' rawPwdLen=${password.length} rawDomain=$domain fallbackUser='${PassKeyAccessibilityService.pendingSaveUsername.take(40)}' fallbackPwdLen=${PassKeyAccessibilityService.pendingSavePassword.length} fallbackDomain=${PassKeyAccessibilityService.pendingSaveDomain}"
+            )
+
+            if (
+                resolvedUsername.isBlank() ||
+                resolvedPassword.isBlank()
+            ) {
+
+                Log.w(
+                    TAG,
+                    "Username/password blank after fallback resolvedUserBlank=${resolvedUsername.isBlank()} resolvedPwdBlank=${resolvedPassword.isBlank()}"
+                )
+
+                callback.onSuccess()
+                return
+            }
+
             val entry = PasswordEntry(
                 id = System.currentTimeMillis().toString(),
-                siteName = siteName,
-                username = username,
-                password = password,
-                loginUrl = domain,
+                siteName = domainToSiteName(resolvedDomain),
+                username = resolvedUsername,
+                password = resolvedPassword,
+                loginUrl = resolvedDomain,
                 dateModified = System.currentTimeMillis(),
             )
-            saveEntry(entry)
-            showSavedNotification(siteName, username)
-        } else {
-            Log.w(TAG, "Both username and password were blank — not saving")
+
+            PasswordRepository.init(this)
+
+            PasswordRepository.saveRaw(this, entry)
+
+            PasswordRepository.refresh()
+
+            Log.d(TAG, "Repository updated instantly")
+
+            NotificationHelper.showSaved(
+                this,
+                entry.siteName,
+                resolvedUsername
+            )
+
+            PassKeyAccessibilityService.userApprovedPendingSave =
+                false
+
+            PassKeyAccessibilityService.pendingSaveUsername =
+                ""
+
+            PassKeyAccessibilityService.pendingSaveDomain =
+                ""
+
+            PassKeyAccessibilityService.pendingSavePassword =
+                ""
+
+            Log.i(TAG, "Saved successfully entry=${entry.loginUrl} / ${entry.username}")
+
+        } catch (e: Exception) {
+
+            Log.e(TAG, "Save failed", e)
         }
 
         callback.onSuccess()
     }
 
-    // ── Notification: confirms save happened (works even app is killed) ────
-
-    private fun showSavedNotification(siteName: String, username: String) {
-        NotificationHelper.showSaved(this, siteName, username)
-    }
 
     // ── View helpers ──────────────────────────────────────────────────────
 

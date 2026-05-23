@@ -20,6 +20,9 @@ import org.json.JSONObject
  */
 object PasswordRepository {
 
+    private var listeners =
+        mutableListOf<() -> Unit>()
+
     private const val TAG = "PasswordRepository"
     const val PREFS_NAME = "passkey_prefs"
     const val KEY_ENTRIES = "password_entries"
@@ -44,6 +47,20 @@ object PasswordRepository {
     /** Returns the current snapshot without requiring Flow collection. */
     fun snapshot(): List<PasswordEntry> = _entries.value
 
+    fun registerListener(listener: () -> Unit) {
+        listeners.add(listener)
+    }
+
+    fun unregisterListener(listener: () -> Unit) {
+        listeners.remove(listener)
+    }
+
+    private fun notifyListeners() {
+        listeners.forEach {
+            it.invoke()
+        }
+    }
+
     /** Upsert: replaces existing entry with same domain+username, or appends new one. */
     @Synchronized
     fun save(entry: PasswordEntry) {
@@ -52,6 +69,7 @@ object PasswordRepository {
         current.add(entry)
         persistAndEmit(current)
         Log.d(TAG, "Saved: ${entry.siteName} / ${entry.username}")
+        notifyListeners()
     }
 
     /** Delete by ID. */
@@ -60,12 +78,15 @@ object PasswordRepository {
         val current = _entries.value.filter { it.id != id }
         persistAndEmit(current)
         Log.d(TAG, "Deleted id=$id")
+        notifyListeners()
     }
 
     /** Force-reload from disk (e.g. after another process writes via a Service). */
     @Synchronized
     fun refresh() {
         _entries.value = loadFromPrefs()
+        Log.d(TAG, "Refreshed — ${_entries.value.size} entries loaded from SharedPreferences")
+        notifyListeners()
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────
@@ -73,6 +94,7 @@ object PasswordRepository {
     private fun persistAndEmit(list: List<PasswordEntry>) {
         prefs?.edit()?.putString(KEY_ENTRIES, serialize(list))?.apply()
         _entries.value = list
+        Log.d(TAG, "Persisted ${list.size} entries to SharedPreferences")
     }
 
     fun loadFromPrefs(): List<PasswordEntry> {
@@ -117,6 +139,7 @@ object PasswordRepository {
      */
     fun saveRaw(context: Context, entry: PasswordEntry) {
         init(context)
+        Log.d(TAG, "saveRaw called for ${entry.loginUrl} / ${entry.username}")
         save(entry)
     }
 }
