@@ -111,10 +111,19 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                             }
                         },
                         onPasswordLogin = { password ->
+
+                            val result = controller.unlockWithPassword(password)
+
+                            if (result.uiState.route == PassKeyRoute.Main) {
+                                platformServices.enableOverlayMonitoringAfterLogin()
+                            }
+
                             applyActionResult(
-                                result = controller.unlockWithPassword(password),
+                                result = result,
                                 platformServices = platformServices,
-                            ) { uiState = it }
+                            ) {
+                                uiState = it
+                            }
                         },
                         onForgotPassword = { uiState = controller.openForgotPassword() },
                     )
@@ -178,8 +187,15 @@ private suspend fun runBiometricUnlock(
     )
 
     if (success) {
+
+        val result = controller.unlockWithBiometric()
+
+        if (result.uiState.route == PassKeyRoute.Main) {
+            platformServices.enableOverlayMonitoringAfterLogin()
+        }
+
         applyActionResult(
-            result = controller.unlockWithBiometric(),
+            result = result,
             platformServices = platformServices,
             onUiState = onUiState,
         )

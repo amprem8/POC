@@ -19,6 +19,7 @@ interface PlatformServices {
     fun loadPasswordEntries(): List<PasswordEntry>
     fun savePasswordEntry(entry: PasswordEntry)
     fun deletePasswordEntry(id: String)
+    fun enableOverlayMonitoringAfterLogin() = Unit
 }
 
 class PreviewPlatformServices : PlatformServices {

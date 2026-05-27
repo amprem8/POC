@@ -52,6 +52,10 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
                 TAG,
                 "onBeginGetCredentialRequest options=${request.beginGetCredentialOptions.size} entries=${entries.size}"
             )
+            PassKeyTrace.i(
+                "CredProvider",
+                "beginGet options=${request.beginGetCredentialOptions.size} entries=${entries.size} ids=${entries.joinToString { it.id }}"
+            )
             val credentialEntries = mutableListOf<PasswordCredentialEntry>()
 
             for (option in request.beginGetCredentialOptions) {
@@ -84,6 +88,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
             }
 
             Log.i(TAG, "Returning ${credentialEntries.size} credential entries")
+            PassKeyTrace.i("CredProvider", "beginGet returning credentialEntries=${credentialEntries.size}")
 
             callback.onResult(
                 BeginGetCredentialResponse.Builder()
@@ -92,6 +97,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "onBeginGetCredentialRequest failed", e)
+            PassKeyTrace.e("CredProvider", "beginGet failed", e)
             callback.onError(GetCredentialUnknownException(e.message))
         }
     }
@@ -105,6 +111,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
     ) {
         try {
             Log.i(TAG, "onBeginCreateCredentialRequest request=${request::class.java.simpleName}")
+            PassKeyTrace.i("CredProvider", "beginCreate request=${request::class.java.simpleName}")
             if (request is BeginCreatePasswordCredentialRequest) {
                 val saveIntent = Intent(this, CredentialSaveActivity::class.java)
                 val pendingIntent = PendingIntent.getActivity(
@@ -124,13 +131,16 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
                 val builder = BeginCreateCredentialResponse.Builder()
                 createEntry?.let { builder.addCreateEntry(it) }
                 Log.i(TAG, "Returning create entry for password save sheet")
+                PassKeyTrace.i("CredProvider", "beginCreate returning createEntry=${createEntry != null}")
                 callback.onResult(builder.build())
             } else {
                 Log.w(TAG, "Unsupported create request type: ${request::class.java.name}")
+                PassKeyTrace.w("CredProvider", "unsupported create request type=${request::class.java.name}")
                 callback.onResult(BeginCreateCredentialResponse.Builder().build())
             }
         } catch (e: Exception) {
             Log.e(TAG, "onBeginCreateCredentialRequest failed", e)
+            PassKeyTrace.e("CredProvider", "beginCreate failed", e)
             callback.onError(CreateCredentialUnknownException(e.message))
         }
     }
@@ -143,6 +153,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
         callback: OutcomeReceiver<Void?, ClearCredentialException>,
     ) {
         Log.i(TAG, "onClearCredentialStateRequest")
+        PassKeyTrace.i("CredProvider", "clearCredentialState requested")
         callback.onResult(null)
     }
 }

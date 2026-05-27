@@ -38,10 +38,14 @@ object PasswordRepository {
 
     /** Must be called once on app start (Application.onCreate or first service connect). */
     fun init(context: Context) {
-        if (prefs != null) return
+        if (prefs != null) {
+            PassKeyTrace.d(TAG, "init skipped prefsAlreadyInitialized entries=${_entries.value.size}")
+            return
+        }
         prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _entries.value = loadFromPrefs()
         Log.d(TAG, "Initialised — ${_entries.value.size} entries loaded")
+        PassKeyTrace.i(TAG, "init completed entries=${_entries.value.size}")
     }
 
     /** Returns the current snapshot without requiring Flow collection. */
@@ -64,11 +68,13 @@ object PasswordRepository {
     /** Upsert: replaces existing entry with same domain+username, or appends new one. */
     @Synchronized
     fun save(entry: PasswordEntry) {
+        PassKeyTrace.i(TAG, "save start id=${entry.id} domain=${entry.loginUrl} user=${entry.username}")
         val current = _entries.value.toMutableList()
         current.removeAll { it.loginUrl == entry.loginUrl && it.username == entry.username }
         current.add(entry)
         persistAndEmit(current)
         Log.d(TAG, "Saved: ${entry.siteName} / ${entry.username}")
+        PassKeyTrace.i(TAG, "save done total=${_entries.value.size}")
         notifyListeners()
     }
 
@@ -84,8 +90,10 @@ object PasswordRepository {
     /** Force-reload from disk (e.g. after another process writes via a Service). */
     @Synchronized
     fun refresh() {
+        PassKeyTrace.d(TAG, "refresh start")
         _entries.value = loadFromPrefs()
         Log.d(TAG, "Refreshed — ${_entries.value.size} entries loaded from SharedPreferences")
+        PassKeyTrace.d(TAG, "refresh done entries=${_entries.value.size}")
         notifyListeners()
     }
 
@@ -95,13 +103,15 @@ object PasswordRepository {
         prefs?.edit()?.putString(KEY_ENTRIES, serialize(list))?.apply()
         _entries.value = list
         Log.d(TAG, "Persisted ${list.size} entries to SharedPreferences")
+        PassKeyTrace.d(TAG, "persistAndEmit entries=${list.size} domains=${list.joinToString { it.loginUrl }}")
     }
 
     fun loadFromPrefs(): List<PasswordEntry> {
         val json = prefs?.getString(KEY_ENTRIES, null) ?: return emptyList()
+        PassKeyTrace.d(TAG, "loadFromPrefs jsonLength=${json.length}")
         return try {
             val array = JSONArray(json)
-            (0 until array.length()).map { i ->
+            val entries = (0 until array.length()).map { i ->
                 val o = array.getJSONObject(i)
                 PasswordEntry(
                     id = o.getString("id"),
@@ -112,8 +122,11 @@ object PasswordRepository {
                     dateModified = o.getLong("dateModified"),
                 )
             }
+            PassKeyTrace.d(TAG, "loadFromPrefs parsed=${entries.size}")
+            entries
         } catch (e: Exception) {
             Log.e(TAG, "Deserialise failed", e)
+            PassKeyTrace.e(TAG, "loadFromPrefs deserialize failed", e)
             emptyList()
         }
     }
@@ -140,6 +153,7 @@ object PasswordRepository {
     fun saveRaw(context: Context, entry: PasswordEntry) {
         init(context)
         Log.d(TAG, "saveRaw called for ${entry.loginUrl} / ${entry.username}")
+        PassKeyTrace.i(TAG, "saveRaw context=${context::class.java.simpleName} id=${entry.id} domain=${entry.loginUrl} user=${entry.username}")
         save(entry)
     }
 }

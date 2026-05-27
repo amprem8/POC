@@ -29,9 +29,14 @@ class PassKeyAutofillService : AutofillService() {
         // Ensure repository is initialised (this service may start before Application.onCreate)
         PasswordRepository.init(this)
         Log.i(TAG, "Autofill service connected")
+        PassKeyTrace.i("Autofill", "onConnected entries=${PasswordRepository.snapshot().size}")
     }
 
-    private fun loadEntries(): List<PasswordEntry> = PasswordRepository.snapshot()
+    private fun loadEntries(): List<PasswordEntry> {
+        val entries = PasswordRepository.snapshot()
+        PassKeyTrace.d("Autofill", "loadEntries size=${entries.size}")
+        return entries
+    }
 
     // ── onFillRequest — called every time a text field is focused in Chrome ─
 
@@ -42,6 +47,10 @@ class PassKeyAutofillService : AutofillService() {
     ) {
         val structure: AssistStructure = request.fillContexts.last().structure
         Log.d(TAG, "onFillRequest — package: ${structure.activityComponent?.packageName}")
+        PassKeyTrace.d(
+            "Autofill",
+            "onFillRequest contexts=${request.fillContexts.size} package=${structure.activityComponent?.packageName}"
+        )
 
         val parsed = ParsedLoginForm.from(structure)
         Log.d(TAG, "Parsed — user:${parsed.usernameId} pwd:${parsed.passwordId} domain:${parsed.webDomain}")
@@ -49,6 +58,7 @@ class PassKeyAutofillService : AutofillService() {
         // Nothing detected — return null (don't crash with empty FillResponse)
         if (parsed.usernameId == null && parsed.passwordId == null) {
             Log.d(TAG, "No credential fields found, skipping")
+            PassKeyTrace.d("Autofill", "skip fill no credential fields found")
             callback.onSuccess(null)
             return
         }
@@ -58,6 +68,7 @@ class PassKeyAutofillService : AutofillService() {
             url.isNotBlank() && domainsMatch(entry.loginUrl, url)
         }
         Log.d(TAG, "Matching entries for '$url': ${matchingEntries.size}")
+        PassKeyTrace.i("Autofill", "fill lookup url=$url matches=${matchingEntries.size}")
 
         val responseBuilder = FillResponse.Builder()
 
@@ -94,8 +105,10 @@ class PassKeyAutofillService : AutofillService() {
                 saveBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
             }
             responseBuilder.setSaveInfo(saveBuilder.build())
+            PassKeyTrace.d("Autofill", "fill response saveIds=${saveIds.size} datasets=${matchingEntries.size}")
         } else {
             // No save ids — can't build a valid FillResponse without dataset or saveinfo
+            PassKeyTrace.w("Autofill", "skip fill no save ids")
             callback.onSuccess(null)
             return
         }
@@ -111,10 +124,15 @@ class PassKeyAutofillService : AutofillService() {
     ) {
 
         try {
+            PassKeyTrace.i(
+                "Autofill",
+                "onSaveRequest approved=${PassKeyAccessibilityService.userApprovedPendingSave} pendingUser=${PassKeyAccessibilityService.pendingSaveUsername} pendingDomain=${PassKeyAccessibilityService.pendingSaveDomain} pendingPwdLen=${PassKeyAccessibilityService.pendingSavePassword.length}"
+            )
 
             if (!PassKeyAccessibilityService.userApprovedPendingSave) {
 
                 Log.i(TAG, "User did not approve save")
+                PassKeyTrace.w("Autofill", "skip save userApprovedPendingSave=false")
 
                 callback.onSuccess()
                 return
@@ -154,6 +172,10 @@ class PassKeyAutofillService : AutofillService() {
                 TAG,
                 "Save candidate rawUser='${username.take(40)}' rawPwdLen=${password.length} rawDomain=$domain fallbackUser='${PassKeyAccessibilityService.pendingSaveUsername.take(40)}' fallbackPwdLen=${PassKeyAccessibilityService.pendingSavePassword.length} fallbackDomain=${PassKeyAccessibilityService.pendingSaveDomain}"
             )
+            PassKeyTrace.i(
+                "Autofill",
+                "resolved save rawUser='${username.take(40)}' rawPwdLen=${password.length} rawDomain=$domain resolvedUser='${resolvedUsername.take(40)}' resolvedPwdLen=${resolvedPassword.length} resolvedDomain=$resolvedDomain"
+            )
 
             if (
                 resolvedUsername.isBlank() ||
@@ -163,6 +185,10 @@ class PassKeyAutofillService : AutofillService() {
                 Log.w(
                     TAG,
                     "Username/password blank after fallback resolvedUserBlank=${resolvedUsername.isBlank()} resolvedPwdBlank=${resolvedPassword.isBlank()}"
+                )
+                PassKeyTrace.w(
+                    "Autofill",
+                    "abort save blank fields resolvedUserBlank=${resolvedUsername.isBlank()} resolvedPwdBlank=${resolvedPassword.isBlank()}"
                 )
 
                 callback.onSuccess()
@@ -185,6 +211,10 @@ class PassKeyAutofillService : AutofillService() {
             PasswordRepository.refresh()
 
             Log.d(TAG, "Repository updated instantly")
+            PassKeyTrace.i(
+                "Autofill",
+                "save success id=${entry.id} domain=${entry.loginUrl} user=${entry.username} repoSize=${PasswordRepository.snapshot().size}"
+            )
 
             NotificationHelper.showSaved(
                 this,
@@ -209,6 +239,7 @@ class PassKeyAutofillService : AutofillService() {
         } catch (e: Exception) {
 
             Log.e(TAG, "Save failed", e)
+            PassKeyTrace.e("Autofill", "onSaveRequest failed", e)
         }
 
         callback.onSuccess()

@@ -1,12 +1,11 @@
 package com.example.poc
 
 import android.accessibilityservice.AccessibilityService
-import android.content.Context
+import android.annotation.SuppressLint
+import android.content.res.Configuration
 import android.graphics.Color
-import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -22,7 +21,10 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.graphics.toColorInt
+import kotlin.math.min
 
+@SuppressLint("AccessibilityPolicy")
 class PassKeyAccessibilityService : AccessibilityService() {
 
     companion object {
@@ -52,7 +54,6 @@ class PassKeyAccessibilityService : AccessibilityService() {
     private var floatingView: View? = null
 
     private var capturedUsername = ""
-    private var capturedPassword = ""
     private var passwordTyped = false
 
     private var lastShownKey = ""
@@ -68,14 +69,19 @@ class PassKeyAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
 
         windowManager =
-            getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            getSystemService(WINDOW_SERVICE) as WindowManager
 
         Log.i(
             TAG,
             "Accessibility connected overlayAllowed=${Settings.canDrawOverlays(this)}"
         )
+        PassKeyTrace.i(
+            "A11y",
+            "onServiceConnected overlayAllowed=${Settings.canDrawOverlays(this)} overlaySession=${OverlaySessionManager.isEnabled(this)}"
+        )
     }
 
+    @SuppressLint("SwitchIntDef")
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
 
         event ?: return
@@ -83,6 +89,11 @@ class PassKeyAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
 
         if (pkg !in BROWSER_PACKAGES) return
+
+        PassKeyTrace.d(
+            "A11y",
+            "event type=${eventTypeName(event.eventType)} pkg=$pkg loginDetected=$loginDetected passwordTyped=$passwordTyped bubbleShowing=$savePromptShowing overlaySession=${OverlaySessionManager.isEnabled(this)}"
+        )
 
         when (event.eventType) {
 
@@ -113,37 +124,33 @@ class PassKeyAccessibilityService : AccessibilityService() {
                                 TAG,
                                 "Captured username: $capturedUsername"
                             )
+                            PassKeyTrace.d("A11y", "captured username=$capturedUsername")
                         }
 
-                    } else {
+                    }  else {
 
-                        val rawPassword = extractPasswordText(event, src)
-                        if (rawPassword.isNotBlank()) {
-                            capturedPassword = rawPassword
-                            Log.d(TAG, "Captured password candidate len=${capturedPassword.length}")
-                        }
+                    passwordTyped = true
+                    lastPasswordTypedAt = System.currentTimeMillis()
 
-                        if (
-                            event.addedCount > 0 ||
-                            event.removedCount > 0
-                        ) {
-
-                            passwordTyped = true
-                            lastPasswordTypedAt = System.currentTimeMillis()
-
-                            Log.d(
-                                TAG,
-                                "Password typed added=${event.addedCount} removed=${event.removedCount} pwdLen=${capturedPassword.length}"
-                            )
-                        }
+                    if (text.isNotBlank()) {
+                        pendingSavePassword = text
                     }
+
+                    Log.d(
+                        TAG,
+                        "Password captured length=${pendingSavePassword.length}"
+                    )
+
+                    PassKeyTrace.d(
+                        "A11y",
+                        "password captured len=${pendingSavePassword.length}"
+                    )
+                }
 
                 } catch (e: Exception) {
 
                     Log.e(TAG, "Text parse failed", e)
                 }
-
-                src.recycle()
             }
 
             AccessibilityEvent.TYPE_VIEW_CLICKED -> {
@@ -168,6 +175,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
                 ) {
 
                     Log.d(TAG, "Login button clicked")
+                    PassKeyTrace.i("A11y", "login button clicked pkg=$pkg combined='$combined'")
 
                     loginDetected = true
                     lastLoginClickAt = System.currentTimeMillis()
@@ -209,6 +217,10 @@ class PassKeyAccessibilityService : AccessibilityService() {
                 val recentClick = now - lastLoginClickAt < 8_000
 
                 if (loginDetected || recentPassword || recentClick) {
+                    PassKeyTrace.d(
+                        "A11y",
+                        "window change reason=${eventTypeName(event.eventType)} recentPassword=$recentPassword recentClick=$recentClick"
+                    )
                     maybeAttemptLoginDetection(
                         pkg = pkg,
                         reason = eventTypeName(event.eventType),
@@ -221,12 +233,19 @@ class PassKeyAccessibilityService : AccessibilityService() {
     private fun maybeAttemptLoginDetection(pkg: String, reason: String) {
 
         val now = System.currentTimeMillis()
-        if (now - lastDetectionAttemptAt < 300) return
+        if (now - lastDetectionAttemptAt < 300) {
+            PassKeyTrace.d("A11y", "skip detection throttle delta=${now - lastDetectionAttemptAt} reason=$reason")
+            return
+        }
         lastDetectionAttemptAt = now
 
         Log.d(
             TAG,
-            "Attempting login detection reason=$reason userBlank=${capturedUsername.isBlank()} pwdTyped=$passwordTyped pwdLen=${capturedPassword.length} recentClickMs=${now - lastLoginClickAt} recentPwdMs=${now - lastPasswordTypedAt}"
+            "Attempting login detection reason=$reason userBlank=${capturedUsername.isBlank()} pwdTyped=$passwordTyped recentClickMs=${now - lastLoginClickAt} recentPwdMs=${now - lastPasswordTypedAt}"
+        )
+        PassKeyTrace.d(
+            "A11y",
+            "attempt detection reason=$reason userBlank=${capturedUsername.isBlank()} pwdTyped=$passwordTyped recentClickMs=${now - lastLoginClickAt} recentPwdMs=${now - lastPasswordTypedAt}"
         )
 
         handler.post {
@@ -242,11 +261,13 @@ class PassKeyAccessibilityService : AccessibilityService() {
 
         if (savePromptShowing) {
             Log.d(TAG, "Skip save bubble [$reason]: bubble already showing")
+            PassKeyTrace.d("A11y", "skip bubble reason=$reason cause=bubbleAlreadyShowing")
             return
         }
 
         if (!loginDetected && System.currentTimeMillis() - lastPasswordTypedAt > 8_000) {
             Log.d(TAG, "Skip save bubble [$reason]: no login signal")
+            PassKeyTrace.d("A11y", "skip bubble reason=$reason cause=noLoginSignal")
             return
         }
 
@@ -258,11 +279,16 @@ class PassKeyAccessibilityService : AccessibilityService() {
                 TAG,
                 "Skip save bubble [$reason]: usernameBlank=${capturedUsername.isBlank()} passwordTyped=$passwordTyped"
             )
+            PassKeyTrace.d(
+                "A11y",
+                "skip bubble reason=$reason cause=missingFields usernameBlank=${capturedUsername.isBlank()} passwordTyped=$passwordTyped"
+            )
             return
         }
 
         if (!Settings.canDrawOverlays(this)) {
             Log.w(TAG, "Skip save bubble [$reason]: overlay permission missing")
+            PassKeyTrace.w("A11y", "skip bubble reason=$reason cause=overlayPermissionMissing")
             return
         }
 
@@ -277,6 +303,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
             now - lastShownTime < 15000
         ) {
             Log.d(TAG, "Skip save bubble [$reason]: duplicate key=$key")
+            PassKeyTrace.d("A11y", "skip bubble reason=$reason cause=duplicate key=$key")
             return
         }
 
@@ -285,7 +312,11 @@ class PassKeyAccessibilityService : AccessibilityService() {
 
         Log.i(
             TAG,
-            "Showing save bubble [$reason] for domain=$domain username=$capturedUsername pwdLen=${capturedPassword.length}"
+            "Showing save bubble [$reason] for domain=$domain username=$capturedUsername "
+        )
+        PassKeyTrace.i(
+            "A11y",
+            "show bubble reason=$reason domain=$domain user=$capturedUsername widthHint=${resources.displayMetrics.widthPixels}"
         )
 
         showPendingSaveBubble(
@@ -336,6 +367,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
             }
         }
 
+        PassKeyTrace.d("A11y", "extractDomain pkg=$pkg resolved=$domain")
         return domain
     }
 
@@ -359,25 +391,6 @@ class PassKeyAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun extractPasswordText(
-        event: AccessibilityEvent,
-        src: AccessibilityNodeInfo,
-    ): String {
-        val candidates = listOfNotNull(
-            src.text?.toString(),
-            event.text.joinToString(separator = ""),
-        )
-
-        return candidates.firstOrNull { candidate ->
-            candidate.isNotBlank() && !looksMasked(candidate)
-        }.orEmpty()
-    }
-
-    private fun looksMasked(value: String): Boolean {
-        if (value.isBlank()) return true
-        return value.all { it == '•' || it == '●' || it == '*' || it == '·' || it == '◦' }
-    }
-
     private fun eventTypeName(eventType: Int): String = when (eventType) {
         AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> "TYPE_VIEW_TEXT_CHANGED"
         AccessibilityEvent.TYPE_VIEW_CLICKED -> "TYPE_VIEW_CLICKED"
@@ -393,6 +406,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
             resources.displayMetrics
         ).toInt()
 
+    @SuppressLint("SetTextI18n", "InlinedApi")
     private fun showPendingSaveBubble(
         username: String,
         domain: String
@@ -402,31 +416,48 @@ class PassKeyAccessibilityService : AccessibilityService() {
 
         savePromptShowing = true
 
+        val metrics = resources.displayMetrics
+
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
+
+        val isTablet =
+            resources.configuration.smallestScreenWidthDp >= 600
+
+        val isLandscape =
+            resources.configuration.orientation ==
+                    Configuration.ORIENTATION_LANDSCAPE
+
+        val bubbleWidth = when {
+
+            isTablet -> (screenWidth * 0.42f).toInt()
+
+            isLandscape -> (screenWidth * 0.60f).toInt()
+
+            else -> (screenWidth * 0.92f).toInt()
+        }
+
         val params = WindowManager.LayoutParams(
+            bubbleWidth,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
+            android.graphics.PixelFormat.TRANSLUCENT
         )
 
-        params.gravity = Gravity.TOP
-        params.horizontalMargin = 0.05f
-        params.y = dp(40)
+        params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        params.y = (screenHeight * 0.06f).toInt()
 
         val bg = GradientDrawable().apply {
 
-            cornerRadius = dp(18).toFloat()
+            cornerRadius = dp(22).toFloat()
 
             setColor(Color.WHITE)
 
             setStroke(
                 dp(1),
-                Color.parseColor("#E5E7EB")
+                "#E5E7EB".toColorInt()
             )
         }
 
@@ -436,25 +467,30 @@ class PassKeyAccessibilityService : AccessibilityService() {
 
             background = bg
 
-            elevation = dp(12).toFloat()
+            elevation = dp(16).toFloat()
 
             gravity = Gravity.CENTER_VERTICAL
 
             setPadding(
-                dp(16),
-                dp(16),
-                dp(16),
-                dp(16)
+                dp(18),
+                dp(18),
+                dp(18),
+                dp(18)
             )
         }
+
+        val logoSize = min(
+            dp(58),
+            (bubbleWidth * 0.14f).toInt()
+        )
 
         val logo = ImageView(this).apply {
 
             setImageResource(R.drawable.passkey_logo)
 
             layoutParams = LinearLayout.LayoutParams(
-                dp(52),
-                dp(52)
+                logoSize,
+                logoSize
             )
         }
 
@@ -468,14 +504,14 @@ class PassKeyAccessibilityService : AccessibilityService() {
                 1f
             )
 
-            setPadding(dp(12), 0, dp(12), 0)
+            setPadding(dp(14), 0, dp(10), 0)
         }
 
         val title = TextView(this).apply {
 
             text = "Save password to PassKey?"
 
-            textSize = 16f
+            textSize = if (isTablet) 18f else 16f
 
             setTypeface(null, Typeface.BOLD)
 
@@ -486,16 +522,20 @@ class PassKeyAccessibilityService : AccessibilityService() {
 
             text = "$domain • $username"
 
-            textSize = 13f
+            textSize = if (isTablet) 14f else 13f
+
+            maxLines = 2
 
             setTextColor(Color.GRAY)
 
-            setPadding(0, dp(4), 0, dp(10))
+            setPadding(0, dp(5), 0, dp(12))
         }
 
         val row = LinearLayout(this).apply {
 
             orientation = LinearLayout.HORIZONTAL
+
+            gravity = Gravity.END
         }
 
         val notNow = Button(this).apply {
@@ -516,7 +556,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
         root.addView(logo)
         root.addView(content)
 
-        root.translationY = -200f
+        root.translationY = -120f
         root.alpha = 0f
 
         floatingView = root
@@ -528,34 +568,62 @@ class PassKeyAccessibilityService : AccessibilityService() {
 
         save.setOnClickListener {
 
-            val directSaveWorked = savePendingCredentialNow(username, domain)
+            userApprovedPendingSave = true
 
-            if (directSaveWorked) {
-                Log.i(TAG, "Saved directly from accessibility bubble")
+            pendingSaveUsername = username.trim()
+
+            pendingSaveDomain = domain.trim()
+
+            pendingSavePassword = pendingSavePassword.trim()
+
+            if (
+                pendingSaveUsername.isBlank() ||
+                pendingSavePassword.isBlank()
+            ) {
+
                 android.widget.Toast.makeText(
                     this,
-                    "Saved to PassKey",
+                    "Unable to capture credentials",
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
-                dismissBubble()
+
                 return@setOnClickListener
             }
 
-            pendingSaveUsername = username
-            pendingSaveDomain = domain
-            pendingSavePassword = capturedPassword
-            userApprovedPendingSave = true
-
-            Log.i(
-                TAG,
-                "User approved pending save awaiting Autofill save callback domain=$domain username=$username fallbackPwdLen=${pendingSavePassword.length}"
+            val entry = PasswordEntry(
+                id = System.currentTimeMillis().toString(),
+                siteName = domain
+                    .removePrefix("https://")
+                    .removePrefix("http://")
+                    .removePrefix("www.")
+                    .split(".")
+                    .firstOrNull()
+                    ?.replaceFirstChar { it.uppercase() }
+                    ?: domain,
+                username = pendingSaveUsername,
+                password = pendingSavePassword,
+                loginUrl = pendingSaveDomain,
+                dateModified = System.currentTimeMillis()
             )
+
+            PasswordRepository.init(this)
+
+            PasswordRepository.save(entry)
 
             android.widget.Toast.makeText(
                 this,
-                "Saving to PassKey...",
+                "Password saved to PassKey",
                 android.widget.Toast.LENGTH_SHORT
             ).show()
+
+            Log.i(
+                TAG,
+                "Accessibility saved credential domain=$pendingSaveDomain user=$pendingSaveUsername"
+            )
+
+            pendingSaveUsername = ""
+            pendingSaveDomain = ""
+            pendingSavePassword = ""
 
             dismissBubble()
         }
@@ -567,7 +635,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
             root.animate()
                 .translationY(0f)
                 .alpha(1f)
-                .setDuration(220)
+                .setDuration(240)
                 .setInterpolator(DecelerateInterpolator())
                 .start()
 
@@ -579,42 +647,11 @@ class PassKeyAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun savePendingCredentialNow(username: String, domain: String): Boolean {
-        val password = capturedPassword.trim()
-        if (username.isBlank() || domain.isBlank() || password.isBlank() || looksMasked(password)) {
-            Log.w(
-                TAG,
-                "Direct save unavailable usernameBlank=${username.isBlank()} domainBlank=${domain.isBlank()} pwdBlank=${password.isBlank()} masked=${looksMasked(password)}"
-            )
-            return false
-        }
-
-        val entry = PasswordEntry(
-            id = System.currentTimeMillis().toString(),
-            siteName = domainToSiteName(domain),
-            username = username,
-            password = password,
-            loginUrl = domain,
-            dateModified = System.currentTimeMillis(),
-        )
-
-        PasswordRepository.saveRaw(this, entry)
-        clearPendingSaveState()
-        return true
-    }
-
-    private fun domainToSiteName(domain: String): String =
-        domain.removePrefix("https://").removePrefix("http://").removePrefix("www.")
-            .split(".").firstOrNull()?.replaceFirstChar { it.uppercase() } ?: domain
-
-    private fun clearPendingSaveState() {
-        pendingSaveUsername = ""
-        pendingSaveDomain = ""
-        pendingSavePassword = ""
-        userApprovedPendingSave = false
-    }
-
     private fun dismissBubble() {
+        PassKeyTrace.d(
+            "A11y",
+            "dismissBubble floatingViewPresent=${floatingView != null} capturedUser=$capturedUsername"
+        )
 
         floatingView?.let {
 
@@ -631,7 +668,6 @@ class PassKeyAccessibilityService : AccessibilityService() {
         savePromptShowing = false
 
         capturedUsername = ""
-        capturedPassword = ""
 
         passwordTyped = false
 
@@ -643,11 +679,9 @@ class PassKeyAccessibilityService : AccessibilityService() {
         }, 1500)
     }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() {
 
-    override fun onDestroy() {
-
-        super.onDestroy()
+        Log.w(TAG, "Accessibility interrupted")
 
         dismissBubble()
     }

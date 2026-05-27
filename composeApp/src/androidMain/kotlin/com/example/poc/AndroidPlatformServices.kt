@@ -4,17 +4,19 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 class AndroidPlatformServices(
     private val activity: FragmentActivity,
@@ -37,22 +39,24 @@ class AndroidPlatformServices(
         decodePassKeyConfig(preferences.getString("passkey_config", null))
 
     override fun savePassKeyConfig(config: PassKeyConfig) {
-        preferences.edit().putString("passkey_config", encodePassKeyConfig(config)).apply()
+        preferences.edit { putString("passkey_config", encodePassKeyConfig(config)) }
     }
 
     // ── Biometric ─────────────────────────────────────────────────────────
 
     override suspend fun promptBiometric(promptTitle: String, promptSubtitle: String): Boolean {
         if (!biometricAvailable) return false
-        return suspendCoroutine { continuation ->
+        return suspendCancellableCoroutine { continuation ->
             val prompt = BiometricPrompt(
                 activity,
                 ContextCompat.getMainExecutor(activity),
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) =
                         continuation.resume(true)
+
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) =
                         continuation.resume(false)
+
                     override fun onAuthenticationFailed() = Unit
                 },
             )
@@ -101,9 +105,30 @@ class AndroidPlatformServices(
     override val entriesFlow: StateFlow<List<PasswordEntry>>
         get() = PasswordRepository.entries
 
-    override fun loadPasswordEntries(): List<PasswordEntry> = PasswordRepository.snapshot()
+    override fun loadPasswordEntries(): List<PasswordEntry> {
+        val snapshot = PasswordRepository.snapshot()
+        PassKeyTrace.d("AndroidPlatform", "loadPasswordEntries size=${snapshot.size}")
+        return snapshot
+    }
 
-    override fun savePasswordEntry(entry: PasswordEntry) = PasswordRepository.save(entry)
+    override fun savePasswordEntry(entry: PasswordEntry) {
+        PassKeyTrace.i("AndroidPlatform", "savePasswordEntry id=${entry.id} domain=${entry.loginUrl} user=${entry.username}")
+        PasswordRepository.save(entry)
+    }
 
-    override fun deletePasswordEntry(id: String) = PasswordRepository.delete(id)
+    override fun deletePasswordEntry(id: String) {
+        PassKeyTrace.i("AndroidPlatform", "deletePasswordEntry id=$id")
+        PasswordRepository.delete(id)
+    }
+
+    override fun enableOverlayMonitoringAfterLogin() {
+
+        val context = activity.applicationContext
+
+        PassKeyTrace.i("AndroidPlatform", "enableOverlayMonitoringAfterLogin activity=${activity::class.java.simpleName}")
+
+        OverlaySessionManager.enable(context)
+
+        PassKeyTrace.i("AndroidPlatform", "overlayEnabled=${OverlaySessionManager.isEnabled(context)}")
+    }
 }

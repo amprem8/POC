@@ -24,6 +24,7 @@ class CredentialSaveActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "CredentialSaveActivity launched")
+        PassKeyTrace.i("CredSave", "onCreate sdk=${Build.VERSION.SDK_INT} extras=${intent?.extras?.keySet()?.joinToString()}")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val createRequest = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent)
@@ -33,6 +34,10 @@ class CredentialSaveActivity : FragmentActivity() {
                 "createRequest=${createRequest != null} passwordRequest=${passwordRequest != null} " +
                     "callingPkg=${createRequest?.callingAppInfo?.packageName}"
             )
+            PassKeyTrace.i(
+                "CredSave",
+                "provider createRequest=${createRequest != null} passwordRequest=${passwordRequest != null} callingPkg=${createRequest?.callingAppInfo?.packageName}"
+            )
 
             if (passwordRequest != null) {
                 val callingOrigin = createRequest.callingAppInfo.packageName
@@ -40,6 +45,10 @@ class CredentialSaveActivity : FragmentActivity() {
                 Log.i(
                     TAG,
                     "Saving credential site=$siteName user=${passwordRequest.id} pwdLen=${passwordRequest.password.length}"
+                )
+                PassKeyTrace.i(
+                    "CredSave",
+                    "saving credential site=$siteName origin=$callingOrigin user=${passwordRequest.id} pwdLen=${passwordRequest.password.length}"
                 )
 
                 val entry = PasswordEntry(
@@ -53,6 +62,7 @@ class CredentialSaveActivity : FragmentActivity() {
 
                 // Save through repository — updates StateFlow instantly
                 PasswordRepository.saveRaw(this, entry)
+                PassKeyTrace.i("CredSave", "repository save complete id=${entry.id} repoSize=${PasswordRepository.snapshot().size}")
                 NotificationHelper.showSaved(this, siteName, passwordRequest.id)
 
                 val responseIntent = Intent()
@@ -62,12 +72,14 @@ class CredentialSaveActivity : FragmentActivity() {
                 )
                 setResult(Activity.RESULT_OK, responseIntent)
                 Log.i(TAG, "Credential save completed successfully")
+                PassKeyTrace.i("CredSave", "completed successfully")
                 finish()
                 return
             }
         }
 
         Log.w(TAG, "Credential save canceled — no password request available")
+        PassKeyTrace.w("CredSave", "canceled no password request available")
         setResult(Activity.RESULT_CANCELED)
         finish()
     }

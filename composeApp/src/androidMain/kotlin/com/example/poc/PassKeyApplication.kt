@@ -8,8 +8,10 @@ import android.os.Build
 class PassKeyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        PassKeyTrace.i("App", "Application.onCreate pid=${android.os.Process.myPid()}")
         // Initialise singleton repository so StateFlow is live for all components
         PasswordRepository.init(this)
+        PassKeyTrace.i("App", "Repository initialized entries=${PasswordRepository.snapshot().size}")
         createNotificationChannels()
     }
 
