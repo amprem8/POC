@@ -1,7 +1,6 @@
 package com.example.poc
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -14,8 +13,6 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * Transparent trampoline activity that shows biometric prompt before
@@ -28,6 +25,7 @@ class AutofillAuthActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PasswordRepository.init(this)
 
         val entryId = intent.getStringExtra(EXTRA_ENTRY_ID)
         val usernameAutofillId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -79,7 +77,7 @@ class AutofillAuthActivity : FragmentActivity() {
         usernameId: android.view.autofill.AutofillId?,
         passwordId: android.view.autofill.AutofillId?,
     ) {
-        val entry = entryId?.let { loadEntryById(it) }
+        val entry = entryId?.let(PasswordRepository::getById)
 
         if (entry == null) {
             setResult(Activity.RESULT_CANCELED)
@@ -107,30 +105,6 @@ class AutofillAuthActivity : FragmentActivity() {
         setResult(Activity.RESULT_OK, replyIntent)
         finish()
     }
-
-    private fun loadEntryById(id: String): PasswordEntry? {
-        val prefs = getSharedPreferences("passkey_prefs", Context.MODE_PRIVATE)
-        val json = prefs.getString("password_entries", null) ?: return null
-        return try {
-            val array = JSONArray(json)
-            (0 until array.length()).mapNotNull { i ->
-                val obj = array.getJSONObject(i)
-                if (obj.getString("id") == id) {
-                    PasswordEntry(
-                        id = obj.getString("id"),
-                        siteName = obj.getString("siteName"),
-                        username = obj.getString("username"),
-                        password = obj.getString("password"),
-                        loginUrl = obj.getString("loginUrl"),
-                        dateModified = obj.getLong("dateModified"),
-                    )
-                } else null
-            }.firstOrNull()
-        } catch (e: Exception) {
-            null
-        }
-    }
-
     companion object {
         const val EXTRA_ENTRY_ID = "entry_id"
         const val EXTRA_USERNAME_ID = "username_autofill_id"

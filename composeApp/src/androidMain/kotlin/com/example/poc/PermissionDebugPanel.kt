@@ -45,7 +45,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /**
  * Debug panel shown inside the vault header.
- * Displays live status of every permission PassKey needs.
+ * Displays live status of the fill-related integrations PassKey uses.
  * Tapping any row with a red ✗ opens the relevant settings page directly.
  * Collapsed by default — tap the header to expand.
  */
@@ -120,12 +120,10 @@ fun PermissionDebugPanel() {
                     color = Color.White.copy(alpha = 0.5f),
                 )
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-                    flags["Credential Provider (Chrome save sheet)"] == false) {
+                    flags["Credential Provider (Android 14+ fill)"] == false) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "📍 Credential Provider: Settings → General management → " +
-                            "Passwords, passkeys & autofill → Additional providers → " +
-                            "toggle PassKey ON → then tap Done ✓ above",
+                        "📍 Credential Provider: Settings → Passwords, passkeys & autofill → Additional providers → toggle PassKey ON → then tap Done ✓ above",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFFCD34D),
                         lineHeight = 16.sp,
@@ -219,11 +217,10 @@ private fun FlagRow(label: String, granted: Boolean, onFix: () -> Unit) {
 fun readAllFlags(context: Context): LinkedHashMap<String, Boolean> {
     val map = LinkedHashMap<String, Boolean>()
     map["Accessibility Service (browser monitor)"] = isAccessibilityServiceEnabled(context)
-    map["Display Over Other Apps (floating banner)"] = isOverlayPermissionGranted(context)
     map["Autofill Service (fill passwords in apps)"] = isAutofillServiceEnabled(context)
     map["Notifications (save confirmation)"] = isNotificationsEnabled(context)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        map["Credential Provider (Chrome save sheet)"] = isCredentialProviderEnabled(context)
+        map["Credential Provider (Android 14+ fill)"] = isCredentialProviderEnabled(context)
     }
     return map
 }
@@ -253,7 +250,6 @@ fun isNotificationsEnabled(context: Context): Boolean {
 fun handleFlagFix(context: Context, label: String) {
     when {
         label.contains("Accessibility") -> openAccessibilityServiceDirectly(context)
-        label.contains("Display Over")  -> openOverlaySettings(context)
         label.contains("Autofill")      -> openAutofillSettings(context)
         label.contains("Notifications") -> openNotificationSettings(context)
         label.contains("Credential")    -> openCredentialProviderSettingsBestEffort(context)

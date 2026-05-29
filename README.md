@@ -31,6 +31,24 @@ in your IDE’s toolbar or build it directly from the terminal:
   .\gradlew.bat :composeApp:assembleDebug
   ```
 
+### Android password manager architecture
+
+The Android app is wired to behave like a system-managed password manager:
+
+- `PassKeyAutofillService` parses `AssistStructure` in `onFillRequest` to detect username/password fields across apps and browsers.
+- Saved credentials are matched by normalized domain or exact package name.
+- Credentials are persisted **only** inside `PassKeyAutofillService.onSaveRequest`.
+- Password storage uses encrypted Android preferences backed by Jetpack Security Crypto and is exposed to the UI via `PasswordRepository.entries` (`StateFlow`).
+- `PassKeyAccessibilityService` is detection-only and can show non-blocking fill suggestions, but it does not save or approve credentials.
+- Android 14+ `PassKeyCredentialProviderService` remains fill-only; it does not create a second save flow.
+
+Verified commands:
+
+```shell
+./gradlew --console=plain :composeApp:compileDebugKotlinAndroid :composeApp:testDebugUnitTest
+./gradlew --console=plain :composeApp:assembleDebug
+```
+
 ### Build and Run Server
 
 To build and run the development version of the server, use the run configuration from the run widget

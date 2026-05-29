@@ -6,8 +6,6 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Overlay permission: show floating "Save to PassKey?" bubble over Chrome -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
 
     <application
@@ -49,14 +47,14 @@
             android:taskAffinity=""
             tools:targetApi="26" />
 
-        <!-- Credential Manager: save activity -->
+        <!-- Credential Manager: save activity (Android 14+ Chrome/browser save path) -->
         <activity
             android:name=".CredentialSaveActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            tools:targetApi="26" />
+            tools:targetApi="34" />
 
         <!-- Autofill Service — fills username/password in ALL browsers & apps -->
         <service
@@ -88,11 +86,29 @@
                 android:resource="@xml/credential_provider" />
         </service>
 
-        <!-- Accessibility Service: monitors ALL browsers, shows floating save bubble -->
+        <!-- Accessibility-fallback save: handles "Save" button tapped on the save-prompt notification -->
+        <receiver
+            android:name=".A11ySaveReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.poc.A11Y_SAVE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Accessibility-fallback fill: handles "Fill" button tapped on the fill-available notification -->
+        <receiver
+            android:name=".A11yFillReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.poc.A11Y_FILL" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Accessibility Service: passively detects login forms and can suggest filling -->
         <service
             android:name=".PassKeyAccessibilityService"
             android:exported="true"
-            android:label="PassKey — Save &amp; Autofill Passwords"
+            android:label="PassKey — Detect Login Forms"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

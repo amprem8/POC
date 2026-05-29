@@ -111,24 +111,12 @@ class AndroidPlatformServices(
         return snapshot
     }
 
-    override fun savePasswordEntry(entry: PasswordEntry) {
-        PassKeyTrace.i("AndroidPlatform", "savePasswordEntry id=${entry.id} domain=${entry.loginUrl} user=${entry.username}")
-        PasswordRepository.save(entry)
-    }
-
     override fun deletePasswordEntry(id: String) {
         PassKeyTrace.i("AndroidPlatform", "deletePasswordEntry id=$id")
         PasswordRepository.delete(id)
     }
 
     override fun enableOverlayMonitoringAfterLogin() {
-
-        val context = activity.applicationContext
-
-        PassKeyTrace.i("AndroidPlatform", "enableOverlayMonitoringAfterLogin activity=${activity::class.java.simpleName}")
-
-        OverlaySessionManager.enable(context)
-
-        PassKeyTrace.i("AndroidPlatform", "overlayEnabled=${OverlaySessionManager.isEnabled(context)}")
+        PassKeyTrace.i("AndroidPlatform", "enableOverlayMonitoringAfterLogin no-op; saving is owned by AutofillService")
     }
 }

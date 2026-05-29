@@ -23,7 +23,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  *  0 → Autofill provider picker (ACTION_REQUEST_SET_AUTOFILL_SERVICE)
  *  1 → Credential Provider settings (android.settings.CREDENTIAL_PROVIDER / Android 14+)
  *  2 → Accessibility settings (direct deep-link to PassKeyAccessibilityService on Android 13+)
- *  3 → Overlay permission (ACTION_MANAGE_OVERLAY_PERMISSION for this package)
  */
 fun handleOnboardingStepAction(context: Context, stepIndex: Int) {
     when (stepIndex) {
@@ -70,16 +69,6 @@ fun handleOnboardingStepAction(context: Context, stepIndex: Int) {
 
         // Step 2 — Accessibility service (direct deep-link on Android 13+)
         2 -> openAccessibilityServiceDirectly(context)
-
-        // Step 3 — Display over other apps
-        3 -> {
-            context.startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:${context.packageName}")
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        }
     }
 }
 
@@ -118,7 +107,6 @@ fun detectCompletedSteps(context: Context): Set<Int> {
     // Step 1 (Credential Provider) — no runtime check available; mark if autofill done
     if (isAutofillServiceEnabled(context)) done.add(1)
     if (isAccessibilityServiceEnabled(context)) done.add(2)
-    if (isOverlayPermissionGranted(context)) done.add(3)
     return done
 }
 

@@ -5,6 +5,10 @@ import android.util.Log
 object PassKeyTrace {
     const val TAG = "PK_TRACE"
 
+    fun v(source: String, message: String) {
+        Log.v(TAG, "[$source] $message")
+    }
+
     fun d(source: String, message: String) {
         Log.d(TAG, "[$source] $message")
     }
@@ -14,15 +18,14 @@ object PassKeyTrace {
     }
 
     fun w(source: String, message: String) {
-        Log.w(TAG, "[$source] $message")
+        Log.w(TAG, "[$source] ⚠️ $message")
     }
 
     fun e(source: String, message: String, throwable: Throwable? = null) {
         if (throwable != null) {
-            Log.e(TAG, "[$source] $message", throwable)
+            Log.e(TAG, "[$source] ❌ $message", throwable)
         } else {
-            Log.e(TAG, "[$source] $message")
+            Log.e(TAG, "[$source] ❌ $message")
         }
     }
 }
-

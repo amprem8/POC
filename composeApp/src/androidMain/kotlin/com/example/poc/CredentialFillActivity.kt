@@ -1,7 +1,6 @@
 package com.example.poc
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -14,7 +13,6 @@ import androidx.credentials.GetPasswordOption
 import androidx.credentials.PasswordCredential
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
-import org.json.JSONArray
 
 /**
  * Called by the Credential Manager system when the user selects a saved password entry.
@@ -30,11 +28,20 @@ class CredentialFillActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        Log.i(TAG, "🚀 CredentialFillActivity.onCreate")
+        PassKeyTrace.i("CredFill", "onCreate launched")
+
+        PasswordRepository.init(this)
         val entryId = intent.getStringExtra(EXTRA_ENTRY_ID)
-        val entry = entryId?.let { loadEntryById(it) }
-        Log.i(TAG, "CredentialFillActivity launched entryId=$entryId found=${entry != null}")
+        val entry   = entryId?.let(PasswordRepository::getById)
+
+        Log.i(TAG, "  entryId=$entryId  found=${entry != null}  site=${entry?.siteName}  user=${entry?.username}")
+        PassKeyTrace.i("CredFill", "entryId=$entryId found=${entry != null} site=${entry?.siteName}")
 
         if (entry == null) {
+            Log.w(TAG, "❌ Entry not found for id=$entryId — aborting")
+            PassKeyTrace.w("CredFill", "entry not found for id=$entryId")
             setResult(Activity.RESULT_CANCELED)
             finish()
             return
@@ -43,23 +50,38 @@ class CredentialFillActivity : FragmentActivity() {
         val canBiometric = BiometricManager.from(this)
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
 
+        Log.i(TAG, "  biometricAvailable=$canBiometric")
+        PassKeyTrace.i("CredFill", "biometricAvailable=$canBiometric site=${entry.siteName}")
+
         if (!canBiometric) {
+            Log.i(TAG, "  No biometric — returning credential directly")
+            PassKeyTrace.i("CredFill", "no biometric — filling directly")
             returnCredential(entry)
             return
         }
+
+        Log.i(TAG, "  Showing biometric prompt for ${entry.siteName}")
+        PassKeyTrace.i("CredFill", "showing biometric prompt for ${entry.siteName}")
 
         BiometricPrompt(
             this,
             ContextCompat.getMainExecutor(this),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    Log.i(TAG, "✅ Biometric succeeded — returning credential for ${entry.siteName}")
+                    PassKeyTrace.i("CredFill", "biometric SUCCESS → returning credential for ${entry.siteName}")
                     returnCredential(entry)
                 }
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    Log.w(TAG, "⚠️ Biometric error code=$errorCode msg=$errString")
+                    PassKeyTrace.w("CredFill", "biometric error code=$errorCode msg=$errString")
                     setResult(Activity.RESULT_CANCELED)
                     finish()
                 }
-                override fun onAuthenticationFailed() = Unit
+                override fun onAuthenticationFailed() {
+                    Log.w(TAG, "⚠️ Biometric failed (wrong finger/face)")
+                    PassKeyTrace.w("CredFill", "biometric auth failed (wrong biometric)")
+                }
             },
         ).authenticate(
             BiometricPrompt.PromptInfo.Builder()
@@ -72,39 +94,21 @@ class CredentialFillActivity : FragmentActivity() {
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun returnCredential(entry: PasswordEntry) {
+        Log.i(TAG, "  returnCredential for ${entry.siteName} / ${entry.username} SDK=${Build.VERSION.SDK_INT}")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val responseIntent = Intent()
             PendingIntentHandler.setGetCredentialResponse(
                 responseIntent,
-                androidx.credentials.GetCredentialResponse(
-                    PasswordCredential(entry.username, entry.password)
-                )
+                androidx.credentials.GetCredentialResponse(PasswordCredential(entry.username, entry.password))
             )
             setResult(Activity.RESULT_OK, responseIntent)
-            Log.i(TAG, "Returned credential for ${entry.siteName} / ${entry.username}")
+            Log.i(TAG, "✅ Credential returned via PendingIntentHandler for ${entry.siteName} / ${entry.username}")
+            PassKeyTrace.i("CredFill", "FILL SUCCESS site=${entry.siteName} user=${entry.username}")
         } else {
+            Log.w(TAG, "⚠️ SDK < 34 — cannot return credential via Credential Manager")
+            PassKeyTrace.w("CredFill", "SDK=${Build.VERSION.SDK_INT} < 34 — Credential Manager not available")
             setResult(Activity.RESULT_CANCELED)
         }
         finish()
     }
-
-    private fun loadEntryById(id: String): PasswordEntry? {
-        val prefs = getSharedPreferences("passkey_prefs", Context.MODE_PRIVATE)
-        val json = prefs.getString("password_entries", null) ?: return null
-        return try {
-            val array = JSONArray(json)
-            (0 until array.length()).mapNotNull { i ->
-                val obj = array.getJSONObject(i)
-                if (obj.getString("id") == id) PasswordEntry(
-                    id = obj.getString("id"),
-                    siteName = obj.getString("siteName"),
-                    username = obj.getString("username"),
-                    password = obj.getString("password"),
-                    loginUrl = obj.getString("loginUrl"),
-                    dateModified = obj.getLong("dateModified"),
-                ) else null
-            }.firstOrNull()
-        } catch (e: Exception) { null }
-    }
 }
-

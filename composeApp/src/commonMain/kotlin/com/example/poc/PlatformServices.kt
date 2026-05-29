@@ -17,7 +17,6 @@ interface PlatformServices {
     fun copyToClipboard(label: String, value: String)
     fun saveRecoveryTextFile(fileName: String, content: String): String
     fun loadPasswordEntries(): List<PasswordEntry>
-    fun savePasswordEntry(entry: PasswordEntry)
     fun deletePasswordEntry(id: String)
     fun enableOverlayMonitoringAfterLogin() = Unit
 }
@@ -36,13 +35,6 @@ class PreviewPlatformServices : PlatformServices {
     override fun copyToClipboard(label: String, value: String) = Unit
     override fun saveRecoveryTextFile(fileName: String, content: String): String = "Preview saved: $fileName"
     override fun loadPasswordEntries(): List<PasswordEntry> = _entries.value
-
-    override fun savePasswordEntry(entry: PasswordEntry) {
-        val current = _entries.value.toMutableList()
-        current.removeAll { it.id == entry.id }
-        current.add(entry)
-        _entries.value = current
-    }
 
     override fun deletePasswordEntry(id: String) {
         _entries.value = _entries.value.filter { it.id != id }

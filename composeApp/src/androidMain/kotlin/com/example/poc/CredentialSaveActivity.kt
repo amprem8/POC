@@ -11,10 +11,18 @@ import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
 
 /**
- * Called by the Credential Manager system when the user chooses PassKey
- * as the provider for a newly created password credential.
+ * Handles the Credential Manager "Save password" flow on Android 14+.
+ *
+ * Chrome and other Credential-Manager-aware browsers call this when the user
+ * chooses "Save to PassKey" from the system save sheet.  We extract username +
+ * password from the [CreatePasswordRequest] and persist them through
+ * [PasswordRepository.saveFromAutofill] — the same single save path used by
+ * [PassKeyAutofillService.onSaveRequest].
+ *
+ * There is intentionally NO second confirmation dialog here: Android's system
+ * save sheet already acts as the single user-facing confirmation step.
  */
-@RequiresApi(Build.VERSION_CODES.O)
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class CredentialSaveActivity : FragmentActivity() {
 
     companion object {
@@ -23,68 +31,77 @@ class CredentialSaveActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "CredentialSaveActivity launched")
-        PassKeyTrace.i("CredSave", "onCreate sdk=${Build.VERSION.SDK_INT} extras=${intent?.extras?.keySet()?.joinToString()}")
+        Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        Log.i(TAG, " CredentialSaveActivity.onCreate  intent=$intent")
+        PassKeyTrace.i("CredSave", "onCreate launched intent action=${intent?.action} extras=${intent?.extras?.keySet()}")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val createRequest = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent)
-            val passwordRequest = createRequest?.callingRequest as? CreatePasswordRequest
-            Log.i(
-                TAG,
-                "createRequest=${createRequest != null} passwordRequest=${passwordRequest != null} " +
-                    "callingPkg=${createRequest?.callingAppInfo?.packageName}"
-            )
-            PassKeyTrace.i(
-                "CredSave",
-                "provider createRequest=${createRequest != null} passwordRequest=${passwordRequest != null} callingPkg=${createRequest?.callingAppInfo?.packageName}"
-            )
+        PasswordRepository.init(this)
 
-            if (passwordRequest != null) {
-                val callingOrigin = createRequest.callingAppInfo.packageName
-                val siteName = domainToSiteName(callingOrigin)
-                Log.i(
-                    TAG,
-                    "Saving credential site=$siteName user=${passwordRequest.id} pwdLen=${passwordRequest.password.length}"
-                )
-                PassKeyTrace.i(
-                    "CredSave",
-                    "saving credential site=$siteName origin=$callingOrigin user=${passwordRequest.id} pwdLen=${passwordRequest.password.length}"
-                )
-
-                val entry = PasswordEntry(
-                    id = System.currentTimeMillis().toString(),
-                    siteName = siteName,
-                    username = passwordRequest.id,
-                    password = passwordRequest.password,
-                    loginUrl = callingOrigin,
-                    dateModified = System.currentTimeMillis(),
-                )
-
-                // Save through repository — updates StateFlow instantly
-                PasswordRepository.saveRaw(this, entry)
-                PassKeyTrace.i("CredSave", "repository save complete id=${entry.id} repoSize=${PasswordRepository.snapshot().size}")
-                NotificationHelper.showSaved(this, siteName, passwordRequest.id)
-
-                val responseIntent = Intent()
-                PendingIntentHandler.setCreateCredentialResponse(
-                    responseIntent,
-                    androidx.credentials.CreatePasswordResponse()
-                )
-                setResult(Activity.RESULT_OK, responseIntent)
-                Log.i(TAG, "Credential save completed successfully")
-                PassKeyTrace.i("CredSave", "completed successfully")
-                finish()
-                return
-            }
+        val request = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent)
+        if (request == null) {
+            Log.w(TAG, "❌ No CreateCredentialRequest in intent — aborting")
+            PassKeyTrace.w("CredSave", "onCreate aborted — PendingIntentHandler returned null request")
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
         }
 
-        Log.w(TAG, "Credential save canceled — no password request available")
-        PassKeyTrace.w("CredSave", "canceled no password request available")
-        setResult(Activity.RESULT_CANCELED)
+        Log.i(TAG, "  request type=${request.callingRequest::class.java.simpleName}  pkg=${request.callingAppInfo.packageName}")
+        PassKeyTrace.i("CredSave", "request type=${request.callingRequest::class.java.simpleName} callingPkg=${request.callingAppInfo.packageName}")
+
+        val createRequest = request.callingRequest
+        if (createRequest !is CreatePasswordRequest) {
+            Log.w(TAG, "❌ Unsupported request type ${createRequest::class.java.simpleName} — expected CreatePasswordRequest")
+            PassKeyTrace.w("CredSave", "unsupported request type ${createRequest::class.java.simpleName}")
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
+        }
+
+        val username = createRequest.id.trim()
+        val password = createRequest.password.trim()
+        // Prefer the origin from the request (the actual web origin / RP ID reported by the browser).
+        // Fall back to the calling package name only when no web origin is available.
+        @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+        val rawOrigin = createRequest.origin
+            ?.takeIf { it.isNotBlank() }
+            ?: runCatching { request.callingAppInfo.origin }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
+            ?: request.callingAppInfo.packageName
+        val origin = normalizeCredentialOrigin(rawOrigin)
+
+        Log.i(TAG, "  user='$username'  passLen=${password.length}  origin=$origin  rawOrigin=$rawOrigin")
+        PassKeyTrace.i("CredSave", "credentials received user='$username' passLen=${password.length} origin=$origin rawOrigin=$rawOrigin")
+
+        if (username.isBlank() || password.isBlank()) {
+            Log.w(TAG, "❌ Blank username or password — skipping save. user='$username' passLen=${password.length}")
+            PassKeyTrace.w("CredSave", "skipped — blank credentials user='$username' passLen=${password.length}")
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
+        }
+
+        val entry = PasswordEntry(
+            id           = System.currentTimeMillis().toString(),
+            siteName     = originDisplayName(origin),
+            username     = username,
+            password     = password,
+            loginUrl     = origin,
+            dateModified = System.currentTimeMillis(),
+        )
+
+        Log.i(TAG, "✅ Saving: site=${entry.siteName}  user=${entry.username}  origin=${entry.loginUrl}")
+        PasswordRepository.saveFromAutofill(entry)
+        NotificationHelper.showSaved(this, entry.siteName, entry.username)
+        PassKeyTrace.i("CredSave", "SAVE SUCCESS site=${entry.siteName} user=${entry.username} origin=${entry.loginUrl}")
+
+        val responseIntent = Intent()
+        PendingIntentHandler.setCreateCredentialResponse(
+            responseIntent,
+            androidx.credentials.CreatePasswordResponse()
+        )
+        setResult(Activity.RESULT_OK, responseIntent)
+        Log.i(TAG, "✅ CredentialSaveActivity finishing with RESULT_OK")
         finish()
     }
-
-    private fun domainToSiteName(domain: String): String =
-        domain.removePrefix("https://").removePrefix("http://").removePrefix("www.")
-            .split(".").firstOrNull()?.replaceFirstChar { it.uppercase() } ?: domain
 }

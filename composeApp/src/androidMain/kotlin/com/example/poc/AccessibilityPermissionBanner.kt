@@ -53,20 +53,18 @@ fun AccessibilityPermissionBanner() {
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var a11yEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
-    var overlayEnabled by remember { mutableStateOf(isOverlayPermissionGranted(context)) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 a11yEnabled = isAccessibilityServiceEnabled(context)
-                overlayEnabled = isOverlayPermissionGranted(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    if (a11yEnabled && overlayEnabled) {
+    if (a11yEnabled) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -77,7 +75,7 @@ fun AccessibilityPermissionBanner() {
             Icon(Icons.Default.Check, null, tint = Color(0xFF065F46), modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text(
-                "✅ PassKey is monitoring all browsers — passwords will be saved automatically",
+                "✅ Browser form detection is active — PassKey can surface fill suggestions while Android handles saving",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF064E3B),
                 fontWeight = FontWeight.Medium,
@@ -94,13 +92,13 @@ fun AccessibilityPermissionBanner() {
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                "⚡ Enable PassKey Browser Monitor",
+                "⚡ Enable Browser Login Detection",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF78350F),
             )
             Text(
-                "PassKey needs 2 quick permissions to automatically detect and save passwords from any browser — no browser configuration needed. Tap each button below to go directly to the right settings page.",
+                "Turn on PassKey accessibility monitoring if you want non-blocking login-form detection in browsers. Android Autofill remains the only save flow.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF92400E),
                 lineHeight = 18.sp,
@@ -109,19 +107,10 @@ fun AccessibilityPermissionBanner() {
             PermissionStepRow(
                 step = "1",
                 title = "Accessibility Service",
-                description = "Reads login forms in Chrome, Firefox and all other browsers",
+                description = "Detects login forms and can show lightweight fill suggestions",
                 done = a11yEnabled,
                 buttonText = "Enable",
                 onClick = { openAccessibilityServiceDirectly(context) },
-            )
-
-            PermissionStepRow(
-                step = "2",
-                title = "Display Over Other Apps",
-                description = "Shows the Save to PassKey? save banner over your browser",
-                done = overlayEnabled,
-                buttonText = "Allow",
-                onClick = { openOverlaySettings(context) },
             )
         }
     }
@@ -208,7 +197,7 @@ fun AutofillPermissionBannerWithLifecycle() {
                         Icon(Icons.Default.Check, null, tint = Color(0xFF1D4ED8), modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            "Enable Credential Provider (Android 14+)",
+                            "Enable Credential Provider Fill (Android 14+)",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF1E3A5F),
@@ -225,7 +214,7 @@ fun AutofillPermissionBannerWithLifecycle() {
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Let PassKey appear in Chrome's 'Save password?' and Credential Manager dialogs alongside Google.",
+                        "Let PassKey appear as a password provider in Android's fill surfaces. Saving still happens only through the system Autofill prompt.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF1E40AF),
                         lineHeight = 18.sp,

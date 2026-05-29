@@ -3,6 +3,8 @@ package com.example.poc
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,9 +13,9 @@ import org.json.JSONObject
 
 /**
  * Singleton password repository that:
- *  - Persists all entries to SharedPreferences("passkey_prefs", "password_entries")
+ *  - Persists all entries to encrypted shared preferences
  *  - Exposes a [StateFlow] of [PasswordEntry] so all Compose screens react instantly
- *  - Is written to from ANY save path: Autofill, CredentialProvider, Accessibility, Notification
+ *  - Accepts persistence only from [PassKeyAutofillService.onSaveRequest]
  *
  * Thread-safety: all mutations are @Synchronized. StateFlow updates are dispatched on the
  * thread that calls save/delete — callers on background threads must collect on Main.
@@ -26,6 +28,7 @@ object PasswordRepository {
     private const val TAG = "PasswordRepository"
     const val PREFS_NAME = "passkey_prefs"
     const val KEY_ENTRIES = "password_entries"
+    private const val SECURE_PREFS_NAME = "passkey_secure_prefs"
 
     private val _entries = MutableStateFlow<List<PasswordEntry>>(emptyList())
 
@@ -42,14 +45,30 @@ object PasswordRepository {
             PassKeyTrace.d(TAG, "init skipped prefsAlreadyInitialized entries=${_entries.value.size}")
             return
         }
-        prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val appContext = context.applicationContext
+        val masterKey = MasterKey.Builder(appContext)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        prefs = EncryptedSharedPreferences.create(
+            appContext,
+            SECURE_PREFS_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+        migrateLegacyPrefsIfNeeded(appContext)
         _entries.value = loadFromPrefs()
-        Log.d(TAG, "Initialised — ${_entries.value.size} entries loaded")
+        Log.d(TAG, "Initialised encrypted storage — ${_entries.value.size} entries loaded")
         PassKeyTrace.i(TAG, "init completed entries=${_entries.value.size}")
     }
 
     /** Returns the current snapshot without requiring Flow collection. */
     fun snapshot(): List<PasswordEntry> = _entries.value
+
+    fun getById(id: String): PasswordEntry? = _entries.value.firstOrNull { it.id == id }
+
+    fun findMatches(origin: String): List<PasswordEntry> =
+        _entries.value.filter { originsMatch(it.loginUrl, origin) }
 
     fun registerListener(listener: () -> Unit) {
         listeners.add(listener)
@@ -65,12 +84,14 @@ object PasswordRepository {
         }
     }
 
-    /** Upsert: replaces existing entry with same domain+username, or appends new one. */
+    /** Upsert: replaces existing entry with same normalized origin+username, or appends new one. */
     @Synchronized
-    fun save(entry: PasswordEntry) {
+    fun saveFromAutofill(entry: PasswordEntry) {
         PassKeyTrace.i(TAG, "save start id=${entry.id} domain=${entry.loginUrl} user=${entry.username}")
         val current = _entries.value.toMutableList()
-        current.removeAll { it.loginUrl == entry.loginUrl && it.username == entry.username }
+        current.removeAll {
+            originsMatch(it.loginUrl, entry.loginUrl) && it.username.equals(entry.username, ignoreCase = true)
+        }
         current.add(entry)
         persistAndEmit(current)
         Log.d(TAG, "Saved: ${entry.siteName} / ${entry.username}")
@@ -100,9 +121,9 @@ object PasswordRepository {
     // ── Internal helpers ──────────────────────────────────────────────────
 
     private fun persistAndEmit(list: List<PasswordEntry>) {
-        prefs?.edit()?.putString(KEY_ENTRIES, serialize(list))?.apply()
+        prefs?.edit()?.putString(KEY_ENTRIES, serialize(list))?.commit()
         _entries.value = list
-        Log.d(TAG, "Persisted ${list.size} entries to SharedPreferences")
+        Log.d(TAG, "Persisted ${list.size} encrypted entries")
         PassKeyTrace.d(TAG, "persistAndEmit entries=${list.size} domains=${list.joinToString { it.loginUrl }}")
     }
 
@@ -146,15 +167,17 @@ object PasswordRepository {
         return array.toString()
     }
 
-    /**
-     * Convenience: save directly from raw prefs+write without requiring init().
-     * Used by Services that run in isolated processes (Autofill / CredentialProvider).
-     */
-    fun saveRaw(context: Context, entry: PasswordEntry) {
-        init(context)
-        Log.d(TAG, "saveRaw called for ${entry.loginUrl} / ${entry.username}")
-        PassKeyTrace.i(TAG, "saveRaw context=${context::class.java.simpleName} id=${entry.id} domain=${entry.loginUrl} user=${entry.username}")
-        save(entry)
+    private fun migrateLegacyPrefsIfNeeded(context: Context) {
+        val encryptedPrefs = prefs ?: return
+        if (encryptedPrefs.contains(KEY_ENTRIES)) return
+
+        val legacyPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val legacyJson = legacyPrefs.getString(KEY_ENTRIES, null)
+            ?: return
+
+        encryptedPrefs.edit().putString(KEY_ENTRIES, legacyJson).commit()
+        legacyPrefs.edit().remove(KEY_ENTRIES).apply()
+        PassKeyTrace.i(TAG, "migrated legacy password storage")
     }
 }
 

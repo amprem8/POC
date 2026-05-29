@@ -36,14 +36,25 @@ class PassKeyApplication : Application() {
                     ).apply { description = "Shown when PassKey can fill a login form" }
                 )
             }
+            if (mgr.getNotificationChannel(CHANNEL_SAVE_PROMPT) == null) {
+                mgr.createNotificationChannel(
+                    NotificationChannel(
+                        CHANNEL_SAVE_PROMPT,
+                        "PassKey — Save Password?",
+                        NotificationManager.IMPORTANCE_HIGH,
+                    ).apply { description = "Prompts you to save a new password after login" }
+                )
+            }
         }
     }
 
     companion object {
-        const val CHANNEL_SAVED = "passkey_saved"
-        const val CHANNEL_FILL  = "passkey_fill"
-        const val NOTIF_SAVED   = 2001
-        const val NOTIF_FILL    = 2002
+        const val CHANNEL_SAVED        = "passkey_saved"
+        const val CHANNEL_FILL         = "passkey_fill"
+        const val CHANNEL_SAVE_PROMPT  = "passkey_save_prompt"
+        const val NOTIF_SAVED          = 2001
+        const val NOTIF_FILL           = 2002
+        const val NOTIF_SAVE_PROMPT    = 2003
     }
 }
 

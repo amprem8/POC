@@ -90,14 +90,6 @@ class IOSPlatformServices : PlatformServices {
         }
     }
 
-    override fun savePasswordEntry(entry: PasswordEntry) {
-        val current = loadPasswordEntries().toMutableList()
-        current.removeAll { it.id == entry.id }
-        current.add(entry)
-        defaults.setObject(encodeEntries(current), forKey = PasswordEntriesKey)
-        _entries.value = current
-    }
-
     override fun deletePasswordEntry(id: String) {
         val current = loadPasswordEntries().filter { it.id != id }
         defaults.setObject(encodeEntries(current), forKey = PasswordEntriesKey)

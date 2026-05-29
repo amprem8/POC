@@ -1,5 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <autofill-service
     xmlns:android="http://schemas.android.com/apk/res/android"
-    android:settingsActivity="com.example.poc.MainActivity" />
+    android:settingsActivity="com.example.poc.MainActivity">
+
+    <!--
+        Compatibility packages allow the autofill service to receive AssistStructure
+        from browsers that render content in a WebView / custom tab.
+        Without these entries Chrome, Samsung Internet, Firefox etc. will NOT call
+        onFillRequest, so no save prompt can ever appear.
+
+        Each entry lists the package name plus the SHA-256 fingerprints of every
+        released signing cert.  An empty <sig> list means "trust any signature"
+        (acceptable for development; tighten for production).
+    -->
+
+    <!--
+        No <signature> child = accept any signing cert (dev-mode).
+        For production add:
+            <signature android:value="HEX_SHA256_OF_APK_CERT" />
+        inside each block.
+    -->
+
+    <!-- Google Chrome stable -->
+    <compatibility-package android:name="com.android.chrome" />
+    <!-- Chrome Beta -->
+    <compatibility-package android:name="com.chrome.beta" />
+    <!-- Chrome Dev -->
+    <compatibility-package android:name="com.chrome.dev" />
+    <!-- Chrome Canary -->
+    <compatibility-package android:name="com.chrome.canary" />
+    <!-- Samsung Internet -->
+    <compatibility-package android:name="com.sec.android.app.sbrowser" />
+    <!-- Firefox -->
+    <compatibility-package android:name="org.mozilla.firefox" />
+    <compatibility-package android:name="org.mozilla.firefox_beta" />
+    <!-- Microsoft Edge -->
+    <compatibility-package android:name="com.microsoft.emmx" />
+    <!-- Brave -->
+    <compatibility-package android:name="com.brave.browser" />
+    <!-- Opera -->
+    <compatibility-package android:name="com.opera.browser" />
+    <!-- DuckDuckGo -->
+    <compatibility-package android:name="com.duckduckgo.mobile.android" />
+
+</autofill-service>
 

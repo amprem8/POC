@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">PassKey</string>
-    <string name="accessibility_service_description">PassKey monitors browser login forms to save and autofill your passwords securely.</string>
+    <string name="accessibility_service_description">PassKey detects login forms and can suggest autofill without storing credentials outside the system save prompt.</string>
 </resources>

@@ -11,6 +11,7 @@ import android.service.autofill.FillResponse
 import android.service.autofill.SaveCallback
 import android.service.autofill.SaveInfo
 import android.service.autofill.SaveRequest
+import android.text.InputType
 import android.util.Log
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
@@ -26,354 +27,290 @@ class PassKeyAutofillService : AutofillService() {
 
     override fun onConnected() {
         super.onConnected()
-        // Ensure repository is initialised (this service may start before Application.onCreate)
         PasswordRepository.init(this)
-        Log.i(TAG, "Autofill service connected")
+        Log.i(TAG, "✅ onConnected — autofill service bound. entries=${PasswordRepository.snapshot().size}")
         PassKeyTrace.i("Autofill", "onConnected entries=${PasswordRepository.snapshot().size}")
     }
 
-    private fun loadEntries(): List<PasswordEntry> {
-        val entries = PasswordRepository.snapshot()
-        PassKeyTrace.d("Autofill", "loadEntries size=${entries.size}")
-        return entries
+    override fun onDisconnected() {
+        super.onDisconnected()
+        Log.w(TAG, "⚠️ onDisconnected — autofill service unbound")
+        PassKeyTrace.w("Autofill", "onDisconnected — service was unbound by OS")
     }
-
-    // ── onFillRequest — called every time a text field is focused in Chrome ─
 
     override fun onFillRequest(
         request: FillRequest,
         cancellationSignal: CancellationSignal,
         callback: FillCallback,
     ) {
-        val structure: AssistStructure = request.fillContexts.last().structure
-        Log.d(TAG, "onFillRequest — package: ${structure.activityComponent?.packageName}")
-        PassKeyTrace.d(
-            "Autofill",
-            "onFillRequest contexts=${request.fillContexts.size} package=${structure.activityComponent?.packageName}"
-        )
+        val contexts = request.fillContexts
+        Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        Log.i(TAG, " onFillRequest  contexts=${contexts.size}  flags=${request.flags}")
+        PassKeyTrace.i("Autofill", "onFillRequest contexts=${contexts.size} flags=${request.flags}")
 
-        val parsed = ParsedLoginForm.from(structure)
-        Log.d(TAG, "Parsed — user:${parsed.usernameId} pwd:${parsed.passwordId} domain:${parsed.webDomain}")
-
-        // Nothing detected — return null (don't crash with empty FillResponse)
-        if (parsed.usernameId == null && parsed.passwordId == null) {
-            Log.d(TAG, "No credential fields found, skipping")
-            PassKeyTrace.d("Autofill", "skip fill no credential fields found")
+        val structure = contexts.lastOrNull()?.structure
+        if (structure == null) {
+            Log.w(TAG, "❌ onFillRequest aborted: null AssistStructure")
+            PassKeyTrace.w("Autofill", "onFillRequest aborted — null AssistStructure")
             callback.onSuccess(null)
             return
         }
 
-        val url = parsed.webDomain ?: parsed.packageName ?: ""
-        val matchingEntries = loadEntries().filter { entry ->
-            url.isNotBlank() && domainsMatch(entry.loginUrl, url)
+        Log.d(TAG, "  structure.activity=${structure.activityComponent}  windows=${structure.windowNodeCount}")
+
+        val parsed = ParsedLoginForm.from(structure)
+        val requestedOrigin = parsed.origin
+
+        Log.i(TAG, "  package=${parsed.packageName}  webDomain=${parsed.webDomain}  origin=$requestedOrigin")
+        Log.i(TAG, "  hasUsername=${parsed.usernameField != null}  hasPassword=${parsed.passwordField != null}")
+        PassKeyTrace.i(
+            "Autofill",
+            "onFillRequest pkg=${parsed.packageName} webDomain=${parsed.webDomain} origin=$requestedOrigin " +
+                "hasUser=${parsed.usernameField != null} hasPass=${parsed.passwordField != null}"
+        )
+
+        val passwordId = parsed.passwordField?.autofillId
+        val usernameId = parsed.usernameField?.autofillId
+
+        // ── If no password field was found, we cannot fill or save ──────────
+        // Exception: if we have a webDomain but no password field yet the page
+        // may still be loading.  Return null so Chrome retries on next focus.
+        if (passwordId == null) {
+            Log.w(TAG, "⚠️ onFillRequest: no password field — returning null (page may still be loading)")
+            PassKeyTrace.w("Autofill", "onFillRequest no password field — returning null so Chrome retries")
+            callback.onSuccess(null)
+            return
         }
-        Log.d(TAG, "Matching entries for '$url': ${matchingEntries.size}")
-        PassKeyTrace.i("Autofill", "fill lookup url=$url matches=${matchingEntries.size}")
+
+        // ── Build saveIds — must include at least the password field ─────────
+        val saveIds = listOfNotNull(usernameId, passwordId).toTypedArray()
+        Log.d(TAG, "  saveIds.size=${saveIds.size}")
 
         val responseBuilder = FillResponse.Builder()
 
-        // ── Add one dataset chip per matching saved credential ─────────
-        matchingEntries.forEach { entry ->
-            val label = "🔑 PassKey: ${entry.siteName} · ${entry.username}"
-            val datasetBuilder = Dataset.Builder()
-
-            parsed.usernameId?.let { id ->
-                datasetBuilder.setValue(
-                    id,
-                    AutofillValue.forText(entry.username),
-                    chipView("🔑 ${entry.siteName} — ${entry.username}"),
-                )
-            }
-            parsed.passwordId?.let { id ->
-                datasetBuilder.setValue(
-                    id,
-                    AutofillValue.forText(entry.password),
-                    chipView(label),
-                )
-            }
-            responseBuilder.addDataset(datasetBuilder.build())
+        // ── Existing credentials ─────────────────────────────────────────────
+        val matches = if (requestedOrigin.isNotBlank()) PasswordRepository.findMatches(requestedOrigin) else emptyList()
+        Log.i(TAG, "  findMatches('$requestedOrigin') → ${matches.size} entries")
+        PassKeyTrace.i("Autofill", "onFillRequest matches=${matches.size} for origin='$requestedOrigin'")
+        matches.forEach { entry ->
+            Log.d(TAG, "    ↳ dataset: ${entry.username} @ ${entry.siteName}")
+            responseBuilder.addDataset(buildDataset(parsed, entry))
         }
 
-        // ── SaveInfo — ALWAYS attached so save prompt fires on submit ──
-        val saveIds = listOfNotNull(parsed.usernameId, parsed.passwordId).toTypedArray()
-        if (saveIds.isNotEmpty()) {
-            val saveBuilder = SaveInfo.Builder(
-                SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD,
-                saveIds,
+        // ── SaveInfo ─────────────────────────────────────────────────────────
+        val saveType = if (usernameId != null)
+            SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD
+        else
+            SaveInfo.SAVE_DATA_TYPE_PASSWORD
+
+        val saveInfoBuilder = SaveInfo.Builder(saveType, saveIds)
+        // FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE: triggers save when form fields disappear
+        // (e.g. after the user submits the login form and the page navigates away).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            saveInfoBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
+            Log.d(TAG, "  SaveInfo FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE set")
+        }
+        val originLabel = if (requestedOrigin.isNotBlank()) requestedOrigin else (parsed.packageName ?: "this app")
+        saveInfoBuilder.setDescription("Save your password for $originLabel?")
+        responseBuilder.setSaveInfo(saveInfoBuilder.build())
+
+        // ── Android 13+ (Tiramisu): header requires at least 1 dataset ─────────
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && matches.isNotEmpty()) {
+            responseBuilder.setHeader(
+                RemoteViews(packageName, android.R.layout.simple_list_item_1).apply {
+                    setTextViewText(android.R.id.text1, "PassKey")
+                }
             )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                saveBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
-            }
-            responseBuilder.setSaveInfo(saveBuilder.build())
-            PassKeyTrace.d("Autofill", "fill response saveIds=${saveIds.size} datasets=${matchingEntries.size}")
-        } else {
-            // No save ids — can't build a valid FillResponse without dataset or saveinfo
-            PassKeyTrace.w("Autofill", "skip fill no save ids")
-            callback.onSuccess(null)
-            return
         }
 
+        Log.i(TAG, "✅ onFillRequest → FillResponse  saveLabel='$originLabel'  datasets=${matches.size}")
+        PassKeyTrace.i("Autofill", "onFillRequest returning FillResponse saveLabel='$originLabel' datasets=${matches.size}")
         callback.onSuccess(responseBuilder.build())
     }
 
-    // ── onSaveRequest — fired after form submit, saves to SharedPrefs ──────
-
-    override fun onSaveRequest(
-        request: SaveRequest,
-        callback: SaveCallback
-    ) {
-
+    override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
+        Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        Log.i(TAG, " onSaveRequest  contexts=${request.fillContexts.size}")
+        PassKeyTrace.i("Autofill", "onSaveRequest contexts=${request.fillContexts.size}")
         try {
-            PassKeyTrace.i(
-                "Autofill",
-                "onSaveRequest approved=${PassKeyAccessibilityService.userApprovedPendingSave} pendingUser=${PassKeyAccessibilityService.pendingSaveUsername} pendingDomain=${PassKeyAccessibilityService.pendingSaveDomain} pendingPwdLen=${PassKeyAccessibilityService.pendingSavePassword.length}"
-            )
-
-            if (!PassKeyAccessibilityService.userApprovedPendingSave) {
-
-                Log.i(TAG, "User did not approve save")
-                PassKeyTrace.w("Autofill", "skip save userApprovedPendingSave=false")
-
-                callback.onSuccess()
-                return
+            PasswordRepository.init(this)
+            val structure = request.fillContexts.lastOrNull()?.structure
+            if (structure == null) {
+                Log.w(TAG, "❌ onSaveRequest aborted: null structure")
+                PassKeyTrace.w("Autofill", "onSaveRequest aborted — null structure")
+                callback.onSuccess(); return
             }
 
-            val structure =
-                request.fillContexts.last().structure
+            val parsed = ParsedLoginForm.from(structure)
+            val username = parsed.usernameField?.currentValue.orEmpty().trim()
+            val password = parsed.passwordField?.currentValue.orEmpty().trim()
+            val origin   = normalizeCredentialOrigin(parsed.origin)
 
-            val parsed =
-                ParsedLoginForm.from(structure)
+            Log.i(TAG, "  origin=$origin  user='$username'  passLen=${password.length}")
+            PassKeyTrace.i("Autofill", "onSaveRequest origin=$origin user='$username' passLen=${password.length}")
 
-            val username =
-                parsed.usernameId?.let {
-                    getNodeValue(structure, it)
-                }?.trim().orEmpty()
-
-            val password =
-                parsed.passwordId?.let {
-                    getNodeValue(structure, it)
-                }?.trim().orEmpty()
-
-            val domain =
-                parsed.webDomain
-                    ?: parsed.packageName
-                    ?: "unknown"
-
-            val resolvedUsername = username.ifBlank {
-                PassKeyAccessibilityService.pendingSaveUsername.trim()
+            if (username.isBlank() || password.isBlank()) {
+                Log.w(TAG, "❌ onSaveRequest skipped — blank credentials. user='$username' passLen=${password.length}")
+                PassKeyTrace.w("Autofill", "onSaveRequest skipped blank credentials user='$username' passLen=${password.length}")
+                callback.onSuccess(); return
             }
-            val resolvedPassword = password.ifBlank {
-                PassKeyAccessibilityService.pendingSavePassword.trim()
-            }
-            val resolvedDomain = domain.takeIf { it.isNotBlank() && it != "unknown" }
-                ?: PassKeyAccessibilityService.pendingSaveDomain.trim().ifBlank { "unknown" }
-
-            Log.i(
-                TAG,
-                "Save candidate rawUser='${username.take(40)}' rawPwdLen=${password.length} rawDomain=$domain fallbackUser='${PassKeyAccessibilityService.pendingSaveUsername.take(40)}' fallbackPwdLen=${PassKeyAccessibilityService.pendingSavePassword.length} fallbackDomain=${PassKeyAccessibilityService.pendingSaveDomain}"
-            )
-            PassKeyTrace.i(
-                "Autofill",
-                "resolved save rawUser='${username.take(40)}' rawPwdLen=${password.length} rawDomain=$domain resolvedUser='${resolvedUsername.take(40)}' resolvedPwdLen=${resolvedPassword.length} resolvedDomain=$resolvedDomain"
-            )
-
-            if (
-                resolvedUsername.isBlank() ||
-                resolvedPassword.isBlank()
-            ) {
-
-                Log.w(
-                    TAG,
-                    "Username/password blank after fallback resolvedUserBlank=${resolvedUsername.isBlank()} resolvedPwdBlank=${resolvedPassword.isBlank()}"
-                )
-                PassKeyTrace.w(
-                    "Autofill",
-                    "abort save blank fields resolvedUserBlank=${resolvedUsername.isBlank()} resolvedPwdBlank=${resolvedPassword.isBlank()}"
-                )
-
-                callback.onSuccess()
-                return
+            if (origin.isBlank()) {
+                Log.w(TAG, "❌ onSaveRequest skipped — blank origin")
+                PassKeyTrace.w("Autofill", "onSaveRequest skipped blank origin")
+                callback.onSuccess(); return
             }
 
             val entry = PasswordEntry(
-                id = System.currentTimeMillis().toString(),
-                siteName = domainToSiteName(resolvedDomain),
-                username = resolvedUsername,
-                password = resolvedPassword,
-                loginUrl = resolvedDomain,
+                id           = System.currentTimeMillis().toString(),
+                siteName     = originDisplayName(origin),
+                username     = username,
+                password     = password,
+                loginUrl     = origin,
                 dateModified = System.currentTimeMillis(),
             )
-
-            PasswordRepository.init(this)
-
-            PasswordRepository.saveRaw(this, entry)
-
-            PasswordRepository.refresh()
-
-            Log.d(TAG, "Repository updated instantly")
-            PassKeyTrace.i(
-                "Autofill",
-                "save success id=${entry.id} domain=${entry.loginUrl} user=${entry.username} repoSize=${PasswordRepository.snapshot().size}"
-            )
-
-            NotificationHelper.showSaved(
-                this,
-                entry.siteName,
-                resolvedUsername
-            )
-
-            PassKeyAccessibilityService.userApprovedPendingSave =
-                false
-
-            PassKeyAccessibilityService.pendingSaveUsername =
-                ""
-
-            PassKeyAccessibilityService.pendingSaveDomain =
-                ""
-
-            PassKeyAccessibilityService.pendingSavePassword =
-                ""
-
-            Log.i(TAG, "Saved successfully entry=${entry.loginUrl} / ${entry.username}")
-
+            Log.i(TAG, "✅ onSaveRequest saving site=${entry.siteName} user=${entry.username}")
+            PasswordRepository.saveFromAutofill(entry)
+            NotificationHelper.showSaved(this, entry.siteName, entry.username)
+            PassKeyTrace.i("Autofill", "save SUCCESS origin=${entry.loginUrl} user=${entry.username}")
         } catch (e: Exception) {
-
-            Log.e(TAG, "Save failed", e)
-            PassKeyTrace.e("Autofill", "onSaveRequest failed", e)
+            Log.e(TAG, "onSaveRequest EXCEPTION", e)
+            PassKeyTrace.e("Autofill", "onSaveRequest EXCEPTION", e)
         }
-
         callback.onSuccess()
     }
 
-
-    // ── View helpers ──────────────────────────────────────────────────────
+    private fun buildDataset(parsed: ParsedLoginForm, entry: PasswordEntry): Dataset {
+        val label = " ${entry.siteName} — ${entry.username}"
+        val builder = Dataset.Builder()
+        parsed.usernameField?.autofillId?.let { builder.setValue(it, AutofillValue.forText(entry.username), chipView(label)) }
+        parsed.passwordField?.autofillId?.let  { builder.setValue(it, AutofillValue.forText(entry.password), chipView(label)) }
+        return builder.build()
+    }
 
     private fun chipView(text: String): RemoteViews =
         RemoteViews(packageName, android.R.layout.simple_list_item_1).apply {
             setTextViewText(android.R.id.text1, text)
         }
-
-    private fun getNodeValue(structure: AssistStructure, id: AutofillId): String? {
-        for (i in 0 until structure.windowNodeCount) {
-            val v = findNodeValue(structure.getWindowNodeAt(i).rootViewNode, id)
-            if (v != null) return v
-        }
-        return null
-    }
-
-    private fun findNodeValue(node: AssistStructure.ViewNode, id: AutofillId): String? {
-        if (node.autofillId == id) return node.autofillValue?.textValue?.toString()
-        for (i in 0 until node.childCount) {
-            val r = findNodeValue(node.getChildAt(i), id)
-            if (r != null) return r
-        }
-        return null
-    }
-
-    // ── Domain helpers ─────────────────────────────────────────────────────
-
-    private fun domainToSiteName(domain: String): String =
-        domain.removePrefix("https://").removePrefix("http://").removePrefix("www.")
-            .split(".").firstOrNull()?.replaceFirstChar { it.uppercase() } ?: domain
-
-    private fun domainsMatch(savedUrl: String, currentDomain: String): Boolean {
-        if (currentDomain.isBlank()) return false
-        val clean = { url: String ->
-            url.removePrefix("https://").removePrefix("http://").removePrefix("www.")
-                .trimEnd('/').lowercase().split("/").first()
-        }
-        val saved = clean(savedUrl)
-        val current = clean(currentDomain)
-        return saved == current || saved.endsWith(".$current") || current.endsWith(".$saved")
-    }
 }
 
-// ── AssistStructure parser ─────────────────────────────────────────────────
+// ─── ParsedLoginForm ────────────────────────────────────────────────────────
 
 @RequiresApi(Build.VERSION_CODES.O)
 data class ParsedLoginForm(
-    val usernameId: AutofillId?,
-    val passwordId: AutofillId?,
+    val usernameField: ParsedField?,
+    val passwordField: ParsedField?,
     val webDomain: String?,
     val packageName: String?,
 ) {
+    val origin: String get() = normalizeCredentialOrigin(webDomain ?: packageName)
+
     companion object {
-        private const val TAG = "ParsedLoginForm"
+        private const val TAG = "PassKeyAutofill"
 
         fun from(structure: AssistStructure): ParsedLoginForm {
-            var usernameId: AutofillId? = null
-            var passwordId: AutofillId? = null
+            var bestUsername: ParsedField? = null
+            var bestPassword: ParsedField? = null
             var webDomain: String? = null
-            val pkg = structure.activityComponent?.packageName
+            val packageName = structure.activityComponent?.packageName
+            Log.d(TAG, "  ParsedLoginForm.from pkg=$packageName windows=${structure.windowNodeCount}")
 
             for (i in 0 until structure.windowNodeCount) {
-                val result = traverseNode(structure.getWindowNodeAt(i).rootViewNode)
-                if (usernameId == null) usernameId = result.usernameId
-                if (passwordId == null) passwordId = result.passwordId
-                if (webDomain == null) webDomain = result.webDomain
+                val win = structure.getWindowNodeAt(i)
+                Log.d(TAG, "    window[$i] title=${win.title}")
+                val result = traverse(win.rootViewNode, 0)
+                bestUsername = ParsedField.bestOf(bestUsername, result.usernameField)
+                bestPassword = ParsedField.bestOf(bestPassword, result.passwordField)
+                if (webDomain.isNullOrBlank()) webDomain = result.webDomain
             }
-            Log.d(TAG, "from() pkg=$pkg domain=$webDomain user=$usernameId pwd=$passwordId")
-            return ParsedLoginForm(usernameId, passwordId, webDomain, pkg)
+            Log.d(TAG, "  ParsedLoginForm result: webDomain=$webDomain hasUser=${bestUsername != null} hasPass=${bestPassword != null}")
+            return ParsedLoginForm(bestUsername, bestPassword, webDomain, packageName)
         }
 
-        private data class R(
-            val usernameId: AutofillId?,
-            val passwordId: AutofillId?,
-            val webDomain: String?,
-        )
+        private fun traverse(node: AssistStructure.ViewNode, depth: Int): ParseResult {
+            var usernameField: ParsedField? = null
+            var passwordField: ParsedField? = null
+            var webDomain = node.webDomain?.takeIf { it.isNotBlank() }
 
-        private fun traverseNode(node: AssistStructure.ViewNode): R {
-            var usernameId: AutofillId? = null
-            var passwordId: AutofillId? = null
-            var webDomain: String? = node.webDomain?.takeIf { it.isNotBlank() }
+            val hints       = (node.autofillHints ?: emptyArray()).map { it.lowercase() }
+            val hintText    = node.hint?.lowercase().orEmpty()
+            val idEntry     = node.idEntry?.lowercase().orEmpty()
+            val text        = node.text?.toString().orEmpty().lowercase()
+            val htmlAttrs   = node.htmlInfo?.attributes.orEmpty().associate { it.first.lowercase() to it.second.lowercase() }
+            val htmlTag     = node.htmlInfo?.tag?.lowercase().orEmpty()
+            val autoComplete = htmlAttrs["autocomplete"].orEmpty()
+            val htmlType    = htmlAttrs["type"].orEmpty()
+            val semanticLabel = listOf(hintText, idEntry, text, htmlAttrs["name"].orEmpty(), htmlAttrs["id"].orEmpty()).joinToString(" ")
 
-            val hints = (node.autofillHints ?: emptyArray()).map { it.lowercase() }
-            val inputType = node.inputType
-            val htmlAttrs = node.htmlInfo?.attributes
-            val htmlTag = node.htmlInfo?.tag?.lowercase()
-
-            // ── Password detection ──────────────────────────────────────
-            val isPassword = hints.any { it.contains("password") } ||
-                (inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0 ||
-                (inputType and android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) != 0 ||
-                htmlAttrs?.any { it.first == "type" && it.second == "password" } == true
-
-            // ── Username/email detection ────────────────────────────────
-            val autoComplete = htmlAttrs?.find { it.first == "autocomplete" }?.second ?: ""
-            val htmlType = htmlAttrs?.find { it.first == "type" }?.second ?: ""
-            val htmlName = htmlAttrs?.find { it.first == "name" }?.second?.lowercase() ?: ""
-            val htmlId = htmlAttrs?.find { it.first == "id" }?.second?.lowercase() ?: ""
+            val isPassword = hints.any { "password" in it } || autoComplete.contains("password") ||
+                htmlType == "password" || semanticLabel.contains("password") || node.isPasswordInputType()
 
             val isUsername = !isPassword && (
-                hints.any { it.contains("username") || it.contains("email") } ||
-                    autoComplete in listOf("username", "email", "current-username") ||
-                    htmlType in listOf("email", "tel") ||
-                    (htmlType == "text" && (
-                        htmlName.contains("user") || htmlName.contains("email") ||
-                            htmlName.contains("login") || htmlName.contains("account") ||
-                            htmlId.contains("user") || htmlId.contains("email") ||
-                            htmlId.contains("login")
-                        )) ||
-                    (inputType and android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS) != 0 ||
-                    (inputType and android.text.InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS) != 0 ||
-                    (htmlTag == "input" && htmlType == "text" && usernameId == null && !isPassword)
-                )
+                hints.any { it.contains("username") || it.contains("email") || it.contains("login") } ||
+                autoComplete in setOf("username", "email", "current-username") ||
+                htmlType in setOf("email", "tel") ||
+                semanticLabel.contains("user") || semanticLabel.contains("email") ||
+                semanticLabel.contains("login") || semanticLabel.contains("account") ||
+                semanticLabel.contains("name") || semanticLabel.contains("phone") ||
+                node.isEmailInputType() ||
+                (htmlTag == "input" && (htmlType == "text" || htmlType.isEmpty()))
+            )
+
+            if (webDomain != null || htmlTag.isNotBlank() || isPassword || isUsername) {
+                val indent = "  ".repeat(depth)
+                Log.v(TAG, "$indent node tag=$htmlTag type=$htmlType ac=$autoComplete hint=$hintText id=$idEntry isPass=$isPassword isUser=$isUsername webDomain=$webDomain")
+            }
 
             node.autofillId?.let { id ->
                 when {
-                    isPassword -> passwordId = id
-                    isUsername -> usernameId = id
+                    isPassword -> {
+                        passwordField = ParsedField(id, node.currentValue(), 100)
+                        Log.i(TAG, "  ✅ PASSWORD field  id=$idEntry  hint=$hintText  value=[${node.currentValue()?.length ?: 0} chars]")
+                        PassKeyTrace.i("Autofill", "PASSWORD field found id=$idEntry hint=$hintText webDomain=$webDomain")
+                    }
+                    isUsername -> {
+                        usernameField = ParsedField(id, node.currentValue(), 80)
+                        Log.i(TAG, "  ✅ USERNAME field  id=$idEntry  hint=$hintText  value='${node.currentValue()}'")
+                        PassKeyTrace.i("Autofill", "USERNAME field found id=$idEntry hint=$hintText value='${node.currentValue()}'")
+                    }
                 }
             }
 
-            for (i in 0 until node.childCount) {
-                val child = traverseNode(node.getChildAt(i))
-                if (usernameId == null) usernameId = child.usernameId
-                if (passwordId == null) passwordId = child.passwordId
-                if (webDomain == null) webDomain = child.webDomain
+            for (ci in 0 until node.childCount) {
+                val child = traverse(node.getChildAt(ci), depth + 1)
+                usernameField = ParsedField.bestOf(usernameField, child.usernameField)
+                passwordField = ParsedField.bestOf(passwordField, child.passwordField)
+                if (webDomain.isNullOrBlank()) webDomain = child.webDomain
             }
-
-            return R(usernameId, passwordId, webDomain)
+            return ParseResult(usernameField, passwordField, webDomain)
         }
     }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+data class ParsedField(val autofillId: AutofillId, val currentValue: String?, val confidence: Int) {
+    companion object {
+        fun bestOf(a: ParsedField?, b: ParsedField?): ParsedField? = when {
+            a == null -> b; b == null -> a; b.confidence > a.confidence -> b; else -> a
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+private data class ParseResult(val usernameField: ParsedField?, val passwordField: ParsedField?, val webDomain: String?)
+
+@RequiresApi(Build.VERSION_CODES.O)
+private fun AssistStructure.ViewNode.currentValue(): String? =
+    autofillValue?.takeIf { it.isText }?.textValue?.toString() ?: text?.toString()
+
+private fun AssistStructure.ViewNode.isPasswordInputType(): Boolean {
+    val mask = inputType and InputType.TYPE_MASK_VARIATION
+    return mask == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+        mask == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+        mask == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+}
+
+private fun AssistStructure.ViewNode.isEmailInputType(): Boolean {
+    val mask = inputType and InputType.TYPE_MASK_VARIATION
+    return mask == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
+        mask == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
 }

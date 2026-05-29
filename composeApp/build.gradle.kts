@@ -32,6 +32,7 @@ kotlin {
             implementation(libs.androidx.fragment.ktx)
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.play)
+            implementation(libs.androidx.security.crypto)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

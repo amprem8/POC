@@ -12,7 +12,6 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.provider.BeginCreateCredentialRequest
 import androidx.credentials.provider.BeginCreateCredentialResponse
-import androidx.credentials.provider.BeginCreatePasswordCredentialRequest
 import androidx.credentials.provider.BeginGetCredentialRequest
 import androidx.credentials.provider.BeginGetCredentialResponse
 import androidx.credentials.provider.BeginGetPasswordOption
@@ -23,15 +22,6 @@ import android.app.PendingIntent
 import android.content.Intent
 import java.time.Instant
 
-/**
- * Android Credential Provider Service.
- *
- * This registers PassKey as a selectable credential provider in Android's
- * Credential Manager system (Android 14+). Users can select this provider
- * when saving/filling passwords in Chrome, Firefox or any other app.
- *
- * To activate: Settings → Passwords & accounts → Additional providers → PassKey
- */
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class PassKeyCredentialProviderService : CredentialProviderService() {
 
@@ -39,65 +29,80 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
         private const val TAG = "PassKeyCredProv"
     }
 
-
     override fun onBeginGetCredentialRequest(
         request: BeginGetCredentialRequest,
         cancellationSignal: CancellationSignal,
         callback: OutcomeReceiver<BeginGetCredentialResponse, GetCredentialException>,
     ) {
+        Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        Log.i(TAG, " onBeginGetCredentialRequest  options=${request.beginGetCredentialOptions.size}")
+        PassKeyTrace.i("CredProvider", "onBeginGetCredentialRequest options=${request.beginGetCredentialOptions.size}")
         try {
             PasswordRepository.init(this)
             val entries = PasswordRepository.snapshot()
-            Log.i(
-                TAG,
-                "onBeginGetCredentialRequest options=${request.beginGetCredentialOptions.size} entries=${entries.size}"
-            )
-            PassKeyTrace.i(
-                "CredProvider",
-                "beginGet options=${request.beginGetCredentialOptions.size} entries=${entries.size} ids=${entries.joinToString { it.id }}"
-            )
+            Log.i(TAG, "  stored entries=${entries.size}  ids=${entries.joinToString { it.id }}")
+            PassKeyTrace.i("CredProvider", "beginGet entries=${entries.size} ids=${entries.joinToString { it.id }}")
+
             val credentialEntries = mutableListOf<PasswordCredentialEntry>()
 
-            for (option in request.beginGetCredentialOptions) {
+            // Extract the calling origin (web domain or package name) for filtering
+            @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+            val callingOrigin = runCatching { request.callingAppInfo?.origin }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { normalizeCredentialOrigin(it) }
+                ?: request.callingAppInfo?.packageName
+                    ?.let { normalizeCredentialOrigin(it) }
+                ?: ""
+            Log.d(TAG, "  callingOrigin=$callingOrigin")
+            PassKeyTrace.d("CredProvider", "beginGet callingOrigin=$callingOrigin")
+
+            for ((optIdx, option) in request.beginGetCredentialOptions.withIndex()) {
+                Log.d(TAG, "  option[$optIdx] class=${option::class.java.simpleName}")
                 if (option is BeginGetPasswordOption) {
-                    entries.forEach { entry ->
+                    Log.d(TAG, "    → BeginGetPasswordOption, building entries")
+                    // Filter entries by origin when a web origin is known; show all when blank
+                    val matchingEntries = if (callingOrigin.isNotBlank())
+                        entries.filter { originsMatch(it.loginUrl, callingOrigin) }
+                    else entries
+                    Log.i(TAG, "    origin='$callingOrigin' → ${matchingEntries.size}/${entries.size} matching entries")
+                    PassKeyTrace.i("CredProvider", "beginGet origin='$callingOrigin' matches=${matchingEntries.size} total=${entries.size}")
+                    matchingEntries.forEach { entry ->
+                        Log.d(TAG, "      building PasswordCredentialEntry for ${entry.username} @ ${entry.siteName}")
                         val fillIntent = Intent(this, CredentialFillActivity::class.java).apply {
                             putExtra(CredentialFillActivity.EXTRA_ENTRY_ID, entry.id)
                         }
                         val pendingIntent = PendingIntent.getActivity(
-                            this,
-                            entry.id.hashCode(),
-                            fillIntent,
+                            this, entry.id.hashCode(), fillIntent,
                             PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                         )
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            credentialEntries.add(
-                                PasswordCredentialEntry.Builder(
-                                    context = this,
-                                    username = entry.username,
-                                    pendingIntent = pendingIntent,
-                                    beginGetPasswordOption = option,
-                                )
-                                    .setDisplayName(entry.siteName)
-                                    .setLastUsedTime(Instant.ofEpochMilli(entry.dateModified))
-                                    .build()
+                        credentialEntries.add(
+                            PasswordCredentialEntry.Builder(
+                                context = this,
+                                username = entry.username,
+                                pendingIntent = pendingIntent,
+                                beginGetPasswordOption = option,
                             )
-                        }
+                                .setDisplayName(entry.siteName)
+                                .setLastUsedTime(Instant.ofEpochMilli(entry.dateModified))
+                                .build()
+                        )
                     }
+                } else {
+                    Log.d(TAG, "    → Unsupported option type, skipping")
                 }
             }
 
-            Log.i(TAG, "Returning ${credentialEntries.size} credential entries")
+            Log.i(TAG, "✅ onBeginGetCredentialRequest returning ${credentialEntries.size} entries")
             PassKeyTrace.i("CredProvider", "beginGet returning credentialEntries=${credentialEntries.size}")
-
             callback.onResult(
                 BeginGetCredentialResponse.Builder()
                     .setCredentialEntries(credentialEntries)
                     .build()
             )
         } catch (e: Exception) {
-            Log.e(TAG, "onBeginGetCredentialRequest failed", e)
-            PassKeyTrace.e("CredProvider", "beginGet failed", e)
+            Log.e(TAG, "onBeginGetCredentialRequest EXCEPTION", e)
+            PassKeyTrace.e("CredProvider", "beginGet EXCEPTION", e)
             callback.onError(GetCredentialUnknownException(e.message))
         }
     }
@@ -109,38 +114,40 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
         cancellationSignal: CancellationSignal,
         callback: OutcomeReceiver<BeginCreateCredentialResponse, CreateCredentialException>,
     ) {
+        Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        Log.i(TAG, " onBeginCreateCredentialRequest  type='${request.type}'")
+        PassKeyTrace.i("CredProvider", "onBeginCreateCredentialRequest type='${request.type}'")
         try {
-            Log.i(TAG, "onBeginCreateCredentialRequest request=${request::class.java.simpleName}")
-            PassKeyTrace.i("CredProvider", "beginCreate request=${request::class.java.simpleName}")
-            if (request is BeginCreatePasswordCredentialRequest) {
-                val saveIntent = Intent(this, CredentialSaveActivity::class.java)
-                val pendingIntent = PendingIntent.getActivity(
-                    this,
-                    0,
-                    saveIntent,
-                    PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-                )
-
-                val createEntry = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    CreateEntry.Builder(
-                        accountName = "PassKey Vault",
-                        pendingIntent = pendingIntent,
-                    ).build()
-                } else null
-
-                val builder = BeginCreateCredentialResponse.Builder()
-                createEntry?.let { builder.addCreateEntry(it) }
-                Log.i(TAG, "Returning create entry for password save sheet")
-                PassKeyTrace.i("CredProvider", "beginCreate returning createEntry=${createEntry != null}")
-                callback.onResult(builder.build())
-            } else {
-                Log.w(TAG, "Unsupported create request type: ${request::class.java.name}")
-                PassKeyTrace.w("CredProvider", "unsupported create request type=${request::class.java.name}")
+            if (!request.type.contains("password", ignoreCase = true)) {
+                Log.w(TAG, "⚠️ beginCreate ignored — type='${request.type}' (not a password request)")
+                PassKeyTrace.w("CredProvider", "beginCreate ignored type='${request.type}' — not a password type")
                 callback.onResult(BeginCreateCredentialResponse.Builder().build())
+                return
             }
+
+            Log.i(TAG, "  type='${request.type}' — offering PassKey save entry")
+            PassKeyTrace.i("CredProvider", "beginCreate OFFERING save entry for type='${request.type}'")
+
+            val saveIntent = Intent(this, CredentialSaveActivity::class.java)
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, saveIntent,
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val createEntry = CreateEntry.Builder(
+                accountName   = getString(R.string.app_name),
+                pendingIntent = pendingIntent,
+            ).build()
+
+            Log.i(TAG, "✅ onBeginCreateCredentialRequest → returning CreateEntry '${getString(R.string.app_name)}'")
+            PassKeyTrace.i("CredProvider", "beginCreate returning CreateEntry account='${getString(R.string.app_name)}'")
+            callback.onResult(
+                BeginCreateCredentialResponse.Builder()
+                    .addCreateEntry(createEntry)
+                    .build()
+            )
         } catch (e: Exception) {
-            Log.e(TAG, "onBeginCreateCredentialRequest failed", e)
-            PassKeyTrace.e("CredProvider", "beginCreate failed", e)
+            Log.e(TAG, "onBeginCreateCredentialRequest EXCEPTION", e)
+            PassKeyTrace.e("CredProvider", "beginCreate EXCEPTION", e)
             callback.onError(CreateCredentialUnknownException(e.message))
         }
     }
@@ -157,4 +164,3 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
         callback.onResult(null)
     }
 }
-
