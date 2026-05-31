@@ -119,6 +119,19 @@ fun PermissionDebugPanel() {
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.5f),
                 )
+
+                // Chrome configuration help
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "📱 Chrome setup: Chrome → ⋮ → Settings → Passwords → " +
+                        "turn OFF 'Offer to save passwords' → " +
+                        "turn OFF 'Auto Sign-in' → " +
+                        "then Chrome uses PassKey as the system autofill provider",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF93C5FD),
+                    lineHeight = 16.sp,
+                )
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
                     flags["Credential Provider (Android 14+ fill)"] == false) {
                     Spacer(Modifier.height(6.dp))
@@ -126,6 +139,16 @@ fun PermissionDebugPanel() {
                         "📍 Credential Provider: Settings → Passwords, passkeys & autofill → Additional providers → toggle PassKey ON → then tap Done ✓ above",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFFCD34D),
+                        lineHeight = 16.sp,
+                    )
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "ℹ️ On Android 14+ Chrome uses Credential Manager (not Autofill). Both Autofill Service AND Credential Provider must be enabled.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFA5B4FC),
                         lineHeight = 16.sp,
                     )
                 }
@@ -216,8 +239,7 @@ private fun FlagRow(label: String, granted: Boolean, onFix: () -> Unit) {
 /** Returns ordered map of flag label → granted status. */
 fun readAllFlags(context: Context): LinkedHashMap<String, Boolean> {
     val map = LinkedHashMap<String, Boolean>()
-    map["Accessibility Service (browser monitor)"] = isAccessibilityServiceEnabled(context)
-    map["Autofill Service (fill passwords in apps)"] = isAutofillServiceEnabled(context)
+    map["Autofill Service (save & fill passwords)"] = isAutofillServiceEnabled(context)
     map["Notifications (save confirmation)"] = isNotificationsEnabled(context)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         map["Credential Provider (Android 14+ fill)"] = isCredentialProviderEnabled(context)
@@ -228,9 +250,21 @@ fun readAllFlags(context: Context): LinkedHashMap<String, Boolean> {
 fun isCredentialProviderEnabled(context: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return false
     return try {
-        val primary = Settings.Secure.getString(context.contentResolver, "credential_service_primary") ?: ""
-        primary.contains("${context.packageName}/${context.packageName}.PassKeyCredentialProviderService")
+        // Check all known secure settings keys for credential providers
+        val keysToCheck = listOf(
+            "credential_service_primary",
+            "credential_service",
+            "credential_provider",
+            "autofill_service_search_uri",
+        )
+        val ourServiceName = "PassKeyCredentialProviderService"
+        val ourPackage = context.packageName
+        keysToCheck.any { key ->
+            val value = Settings.Secure.getString(context.contentResolver, key) ?: ""
+            value.contains(ourPackage) && value.contains(ourServiceName)
+        }
     } catch (_: Exception) {
+        // Fallback to user-acknowledged flag
         context.getSharedPreferences("passkey_prefs", Context.MODE_PRIVATE)
             .getBoolean("credential_provider_enabled", false)
     }
@@ -249,7 +283,6 @@ fun isNotificationsEnabled(context: Context): Boolean {
 
 fun handleFlagFix(context: Context, label: String) {
     when {
-        label.contains("Accessibility") -> openAccessibilityServiceDirectly(context)
         label.contains("Autofill")      -> openAutofillSettings(context)
         label.contains("Notifications") -> openNotificationSettings(context)
         label.contains("Credential")    -> openCredentialProviderSettingsBestEffort(context)

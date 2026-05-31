@@ -92,7 +92,7 @@ class CredentialSaveActivity : FragmentActivity() {
 
         Log.i(TAG, "✅ Saving: site=${entry.siteName}  user=${entry.username}  origin=${entry.loginUrl}")
         PasswordRepository.saveFromAutofill(entry)
-        NotificationHelper.showSaved(this, entry.siteName, entry.username)
+        Log.i(TAG, "✅ PasswordRepository.save() — credential stored successfully")
         PassKeyTrace.i("CredSave", "SAVE SUCCESS site=${entry.siteName} user=${entry.username} origin=${entry.loginUrl}")
 
         val responseIntent = Intent()

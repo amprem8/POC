@@ -86,29 +86,11 @@
                 android:resource="@xml/credential_provider" />
         </service>
 
-        <!-- Accessibility-fallback save: handles "Save" button tapped on the save-prompt notification -->
-        <receiver
-            android:name=".A11ySaveReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.example.poc.A11Y_SAVE" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Accessibility-fallback fill: handles "Fill" button tapped on the fill-available notification -->
-        <receiver
-            android:name=".A11yFillReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.example.poc.A11Y_FILL" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Accessibility Service: passively detects login forms and can suggest filling -->
+        <!-- Accessibility Service: overlay UI and fill-assist only (no credential saving) -->
         <service
             android:name=".PassKeyAccessibilityService"
             android:exported="true"
-            android:label="PassKey — Detect Login Forms"
+            android:label="PassKey — Fill Assist"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

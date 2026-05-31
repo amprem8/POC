@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 
+<!-- Accessibility service configuration — overlay UI and fill-assist only.
+     This service does NOT detect login forms, extract credentials, or trigger saves.
+     All credential saving is handled by PassKeyAutofillService (Android Autofill Framework). -->
 <accessibility-service
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/accessibility_service_description"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged|typeViewClicked"
+    android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:notificationTimeout="50"
+    android:notificationTimeout="100"
     android:canRetrieveWindowContent="true"
-    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagRequestEnhancedWebAccessibility"/>
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"/>

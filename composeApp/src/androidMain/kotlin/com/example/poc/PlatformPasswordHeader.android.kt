@@ -15,8 +15,7 @@ actual fun PlatformPasswordHeader() {
     ) {
         // ── Debug panel: live permission flags (tap to expand / fix) ──
         PermissionDebugPanel()
-        // ── Permission setup banners ───────────────────────────────────
-        AccessibilityPermissionBanner()
+        // ── Autofill + Credential Provider permission banners ────────
         AutofillPermissionBannerWithLifecycle()
     }
 }

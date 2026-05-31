@@ -29,6 +29,19 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
         private const val TAG = "PassKeyCredProv"
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        Log.i(TAG, "✅ CredentialProviderService.onCreate — service created SDK=${Build.VERSION.SDK_INT}")
+        PassKeyTrace.i("CredProvider", "onCreate — service created SDK=${Build.VERSION.SDK_INT}")
+        PasswordRepository.init(this)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "onDestroy — credential provider service destroyed")
+        PassKeyTrace.d("CredProvider", "onDestroy")
+    }
+
     override fun onBeginGetCredentialRequest(
         request: BeginGetCredentialRequest,
         cancellationSignal: CancellationSignal,

@@ -47,73 +47,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 
+/**
+ * Optional accessibility banner. Accessibility is NOT required for credential saving.
+ * It is only used for overlay UI and manual fill-assist from the vault screen.
+ * All credential saving goes through [PassKeyAutofillService.onSaveRequest].
+ */
 @Composable
 fun AccessibilityPermissionBanner() {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    var a11yEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                a11yEnabled = isAccessibilityServiceEnabled(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    if (a11yEnabled) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFFD1FAE5), RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.Check, null, tint = Color(0xFF065F46), modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "✅ Browser form detection is active — PassKey can surface fill suggestions while Android handles saving",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF064E3B),
-                fontWeight = FontWeight.Medium,
-            )
-        }
-        return
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                "⚡ Enable Browser Login Detection",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF78350F),
-            )
-            Text(
-                "Turn on PassKey accessibility monitoring if you want non-blocking login-form detection in browsers. Android Autofill remains the only save flow.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF92400E),
-                lineHeight = 18.sp,
-            )
-
-            PermissionStepRow(
-                step = "1",
-                title = "Accessibility Service",
-                description = "Detects login forms and can show lightweight fill suggestions",
-                done = a11yEnabled,
-                buttonText = "Enable",
-                onClick = { openAccessibilityServiceDirectly(context) },
-            )
-        }
-    }
+    // Intentionally empty — accessibility is no longer part of the credential workflow.
+    // The Autofill Framework handles all credential saving and filling.
+    // This composable is kept as a no-op to avoid breaking any remaining references.
 }
 
 // Also apply lifecycle-aware refresh to the autofill banner
@@ -163,9 +106,9 @@ fun AutofillPermissionBannerWithLifecycle() {
             Spacer(Modifier.width(8.dp))
             Text(
                 text = if (autofillEnabled)
-                    "✅ Autofill active — PassKey fills passwords in all browsers"
+                    "✅ Autofill active — PassKey saves & fills passwords via Android Autofill Framework"
                 else
-                    "⚠️ Tap to set PassKey as the autofill provider",
+                    "⚠️ Tap to set PassKey as the autofill provider (required for save & fill)",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
                 color = if (autofillEnabled) Color(0xFF064E3B) else Color(0xFF7F1D1D),
@@ -214,7 +157,7 @@ fun AutofillPermissionBannerWithLifecycle() {
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Let PassKey appear as a password provider in Android's fill surfaces. Saving still happens only through the system Autofill prompt.",
+                        "Let PassKey appear as a password provider in Android's fill surfaces. Saving happens only through the system Autofill Framework prompt.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF1E40AF),
                         lineHeight = 18.sp,
@@ -235,63 +178,6 @@ fun AutofillPermissionBannerWithLifecycle() {
     }
 }
 
-@Composable
-private fun PermissionStepRow(
-    step: String,
-    title: String,
-    description: String,
-    done: Boolean,
-    buttonText: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                if (done) Color(0xFFD1FAE5) else Color(0xFFFEE2E2),
-                RoundedCornerShape(10.dp),
-            )
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .background(if (done) Color(0xFF065F46) else Color(0xFF374151), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (done) {
-                Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
-            } else {
-                Text(step, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-                color = if (done) Color(0xFF064E3B) else Color(0xFF1F2937),
-            )
-            Text(
-                description, style = MaterialTheme.typography.labelSmall,
-                color = if (done) Color(0xFF047857) else Color(0xFF6B7280),
-            )
-        }
-        if (!done) {
-            Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = onClick,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF374151)),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.height(34.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-            ) {
-                Text(buttonText, fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
-            }
-        }
-    }
-}
-
 // ── Permission check helpers ───────────────────────────────────────────────
 
 fun isAccessibilityServiceEnabled(context: Context): Boolean {
@@ -306,17 +192,9 @@ fun isAccessibilityServiceEnabled(context: Context): Boolean {
 fun isOverlayPermissionGranted(context: Context): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(context) else true
 
-/**
- * Opens the exact accessibility settings page for THIS app's service.
- * On Android 13+ we can deep-link directly to the service toggle page.
- * On older versions we fall back to the main Accessibility settings list.
- */
 fun openAccessibilityServiceDirectly(context: Context) {
-    // Try to deep-link directly to PassKeyAccessibilityService's own settings page
-    // URI format: package:com.example.poc/.PassKeyAccessibilityService
     val componentName = "${context.packageName}/.PassKeyAccessibilityService"
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        // Android 13+ supports direct deep-link to a specific accessibility service
         try {
             val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -327,7 +205,6 @@ fun openAccessibilityServiceDirectly(context: Context) {
             return
         } catch (_: Exception) {}
     }
-    // Fallback: open the accessibility settings list (works on all Android versions)
     try {
         context.startActivity(
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -345,7 +222,6 @@ fun openAccessibilitySettings(context: Context) {
 
 fun openOverlaySettings(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        // Goes directly to PassKey's "Appear on top" toggle page — works on all brands
         context.startActivity(
             Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:${context.packageName}"))
@@ -356,8 +232,10 @@ fun openOverlaySettings(context: Context) {
 
 fun isAutofillServiceEnabled(context: Context): Boolean {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val current = Settings.Secure.getString(context.contentResolver, "autofill_service")
-        current == "${context.packageName}/${context.packageName}.PassKeyAutofillService"
+        val current = Settings.Secure.getString(context.contentResolver, "autofill_service") ?: ""
+        // Different Android versions format the autofill_service string differently
+        // Some use "pkg/pkg.ServiceName", others use "pkg/.ServiceName", etc.
+        current.contains(context.packageName) && current.contains("PassKeyAutofillService")
     } else false
 }
 
