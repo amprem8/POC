@@ -113,6 +113,9 @@ fun BlankAuthenticatedScreen(
                     platformServices.deletePasswordEntry(id)
                     // StateFlow auto-updates the UI — no manual reload needed
                 },
+                onUpdateNotes = { id, notes ->
+                    platformServices.updateNotes(id, notes)
+                },
                 headerContent = { PlatformPasswordHeader() },
             )
         }

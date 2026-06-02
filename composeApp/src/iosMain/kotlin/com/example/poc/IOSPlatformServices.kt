@@ -83,6 +83,7 @@ class IOSPlatformServices : PlatformServices {
                     password = map["password"] ?: "",
                     loginUrl = map["loginUrl"] ?: "",
                     dateModified = map["dateModified"]?.toLongOrNull() ?: 0L,
+                    notes = map["notes"] ?: "",
                 )
             }
         } catch (e: Exception) {
@@ -96,10 +97,19 @@ class IOSPlatformServices : PlatformServices {
         _entries.value = current
     }
 
+    override fun updateNotes(id: String, notes: String) {
+        val current = loadPasswordEntries().map {
+            if (it.id == id) it.copy(notes = notes) else it
+        }
+        defaults.setObject(encodeEntries(current), forKey = PasswordEntriesKey)
+        _entries.value = current
+    }
+
     private fun encodeEntries(entries: List<PasswordEntry>): String =
         entries.joinToString("||ENTRY||") { e ->
             listOf("id=${e.id}", "siteName=${e.siteName}", "username=${e.username}",
-                   "password=${e.password}", "loginUrl=${e.loginUrl}", "dateModified=${e.dateModified}")
+                   "password=${e.password}", "loginUrl=${e.loginUrl}", "dateModified=${e.dateModified}",
+                   "notes=${e.notes}")
                 .joinToString("||FIELD||")
         }
 }

@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.app.assist.AssistStructure
 import android.os.Build
 import android.os.CancellationSignal
+import android.os.Handler
+import android.os.Looper
 import android.service.autofill.AutofillService
 import android.service.autofill.Dataset
 import android.service.autofill.FillCallback
@@ -17,6 +19,7 @@ import android.util.Log
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
 import android.widget.RemoteViews
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 
 /**
@@ -137,21 +140,6 @@ class PassKeyAutofillService : AutofillService() {
             responseBuilder.addDataset(buildDataset(parsed, entry))
         }
 
-        // ── Placeholder dataset (Bitwarden pattern) ─────────────────────────
-        // CRITICAL: Always add at least one dataset so the autofill framework
-        // begins tracking the form's autofill IDs. Without this, onSaveRequest
-        // may never fire on many devices and Chrome versions.
-        // The placeholder uses null values — tapping it does nothing (no app
-        // launch, no fill), but the framework starts tracking the fields.
-        if (matches.isEmpty()) {
-            Log.i(TAG, "  Adding placeholder dataset (vault empty for this origin)")
-            PassKeyTrace.i("Autofill", "onFillRequest adding placeholder dataset — no matches for origin='$requestedOrigin'")
-            val placeholderDataset = buildPlaceholderDataset(parsed)
-            if (placeholderDataset != null) {
-                responseBuilder.addDataset(placeholderDataset)
-            }
-        }
-
         // ── SaveInfo ─────────────────────────────────────────────────────────
         val saveType = if (usernameId != null)
             SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD
@@ -171,16 +159,18 @@ class PassKeyAutofillService : AutofillService() {
         saveInfoBuilder.setDescription("Save your password for $originLabel?")
         responseBuilder.setSaveInfo(saveInfoBuilder.build())
 
-        // ── Android 13+ (Tiramisu): header requires at least 1 dataset ─────────
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        // ── Android 13+ (Tiramisu): header — only when showing real matches ───
+        // Skip the header for placeholder-only responses to avoid showing two
+        // "PassKey" entries (header + placeholder chip) to the user.
+        if (matches.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             responseBuilder.setHeader(
-                RemoteViews(packageName, android.R.layout.simple_list_item_1).apply {
-                    setTextViewText(android.R.id.text1, "PassKey")
+                RemoteViews(packageName, R.layout.autofill_header).apply {
+                    setTextViewText(R.id.header_title, "Saved with PassKey")
                 }
             )
         }
 
-        val totalDatasets = matches.size + if (matches.isEmpty()) 1 else 0
+        val totalDatasets = matches.size
         Log.i(TAG, "✅ onFillRequest → FillResponse  saveLabel='$originLabel'  datasets=$totalDatasets")
         PassKeyTrace.i("Autofill", "onFillRequest returning FillResponse saveLabel='$originLabel' datasets=$totalDatasets")
         callback.onSuccess(responseBuilder.build())
@@ -241,6 +231,15 @@ class PassKeyAutofillService : AutofillService() {
             PasswordRepository.saveFromAutofill(entry)
             Log.i(TAG, "✅ PasswordRepository.save() — credential stored successfully")
             PassKeyTrace.i("Autofill", "save SUCCESS origin=${entry.loginUrl} user=${entry.username}")
+
+            // Show toast on the main thread to confirm save to the user
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(
+                    this,
+                    "✅ Password saved for ${entry.siteName}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "onSaveRequest EXCEPTION", e)
             PassKeyTrace.e("Autofill", "onSaveRequest EXCEPTION", e)
@@ -251,37 +250,21 @@ class PassKeyAutofillService : AutofillService() {
     // ── Dataset builders ─────────────────────────────────────────────────────
 
     private fun buildDataset(parsed: ParsedLoginForm, entry: PasswordEntry): Dataset {
-        val label = " ${entry.siteName} — ${entry.username}"
         val builder = Dataset.Builder()
-        parsed.usernameField?.autofillId?.let { builder.setValue(it, AutofillValue.forText(entry.username), chipView(label)) }
-        parsed.passwordField?.autofillId?.let  { builder.setValue(it, AutofillValue.forText(entry.password), chipView(label)) }
+        val presentation = datasetView(entry.username, entry.siteName)
+        parsed.usernameField?.autofillId?.let { builder.setValue(it, AutofillValue.forText(entry.username), presentation) }
+        parsed.passwordField?.autofillId?.let  { builder.setValue(it, AutofillValue.forText(entry.password), presentation) }
         return builder.build()
     }
 
     /**
-     * Builds a placeholder dataset with null values.
-     * Following Bitwarden's pattern: this dataset doesn't fill anything,
-     * but its presence forces the autofill framework to begin tracking the
-     * form's autofill IDs, which is required for onSaveRequest to fire.
-     *
-     * Tapping this dataset does nothing visible (values are null, no
-     * authentication intent) — it just dismisses the autofill dropdown.
+     * Builds a modern RemoteViews presentation for an autofill dataset entry
+     * showing the PassKey logo, title text and subtitle.
      */
-    private fun buildPlaceholderDataset(parsed: ParsedLoginForm): Dataset? {
-        val passwordId = parsed.passwordField?.autofillId ?: return null
-        val label = "PassKey"
-
-        val builder = Dataset.Builder()
-        // No setAuthentication — tapping just dismisses the dropdown.
-        // Null values mean nothing is filled into the fields.
-        parsed.usernameField?.autofillId?.let { builder.setValue(it, null, chipView(label)) }
-        builder.setValue(passwordId, null, chipView(label))
-        return builder.build()
-    }
-
-    private fun chipView(text: String): RemoteViews =
-        RemoteViews(packageName, android.R.layout.simple_list_item_1).apply {
-            setTextViewText(android.R.id.text1, text)
+    private fun datasetView(title: String, subtitle: String): RemoteViews =
+        RemoteViews(packageName, R.layout.autofill_dataset_item).apply {
+            setTextViewText(R.id.autofill_title, title)
+            setTextViewText(R.id.autofill_subtitle, subtitle)
         }
 }
 

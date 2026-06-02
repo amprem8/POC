@@ -33,6 +33,7 @@ kotlin {
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.play)
             implementation(libs.androidx.security.crypto)
+            implementation("io.ktor:ktor-client-okhttp:${libs.versions.ktor.get()}")
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -45,9 +46,15 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(projects.shared)
+            implementation(libs.coil.compose)
+            implementation(libs.coil.network.ktor)
+            implementation("io.ktor:ktor-client-core:${libs.versions.ktor.get()}")
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+        iosMain.dependencies {
+            implementation("io.ktor:ktor-client-darwin:${libs.versions.ktor.get()}")
         }
     }
 }

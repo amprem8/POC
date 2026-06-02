@@ -18,6 +18,7 @@ interface PlatformServices {
     fun saveRecoveryTextFile(fileName: String, content: String): String
     fun loadPasswordEntries(): List<PasswordEntry>
     fun deletePasswordEntry(id: String)
+    fun updateNotes(id: String, notes: String)
     fun enableOverlayMonitoringAfterLogin() = Unit
 }
 
@@ -38,5 +39,11 @@ class PreviewPlatformServices : PlatformServices {
 
     override fun deletePasswordEntry(id: String) {
         _entries.value = _entries.value.filter { it.id != id }
+    }
+
+    override fun updateNotes(id: String, notes: String) {
+        _entries.value = _entries.value.map {
+            if (it.id == id) it.copy(notes = notes) else it
+        }
     }
 }

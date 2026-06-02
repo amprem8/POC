@@ -108,6 +108,16 @@ object PasswordRepository {
         notifyListeners()
     }
 
+    /** Update notes for a specific entry by ID. */
+    @Synchronized
+    fun updateNotes(id: String, notes: String) {
+        val current = _entries.value.map {
+            if (it.id == id) it.copy(notes = notes) else it
+        }
+        persistAndEmit(current)
+        Log.d(TAG, "Updated notes for id=$id")
+    }
+
     /** Force-reload from disk (e.g. after another process writes via a Service). */
     @Synchronized
     fun refresh() {
@@ -141,6 +151,7 @@ object PasswordRepository {
                     password = o.getString("password"),
                     loginUrl = o.getString("loginUrl"),
                     dateModified = o.getLong("dateModified"),
+                    notes = o.optString("notes", ""),
                 )
             }
             PassKeyTrace.d(TAG, "loadFromPrefs parsed=${entries.size}")
@@ -162,6 +173,7 @@ object PasswordRepository {
                 put("password", e.password)
                 put("loginUrl", e.loginUrl)
                 put("dateModified", e.dateModified)
+                put("notes", e.notes)
             })
         }
         return array.toString()

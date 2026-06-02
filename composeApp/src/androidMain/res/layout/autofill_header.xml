@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="6dp"
+    android:background="#F3F4F6">
+
+    <ImageView
+        android:id="@+id/header_icon"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:src="@drawable/passkey_logo"
+        android:scaleType="centerCrop"
+        android:contentDescription="PassKey" />
+
+    <TextView
+        android:id="@+id/header_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Saved with PassKey"
+        android:textSize="13sp"
+        android:textColor="#6B7280"
+        android:textStyle="bold"
+        android:layout_marginStart="8dp" />
+
+</LinearLayout>
+

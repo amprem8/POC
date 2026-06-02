@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.credentials.CreatePasswordRequest
 import androidx.credentials.provider.PendingIntentHandler
@@ -94,6 +95,8 @@ class CredentialSaveActivity : FragmentActivity() {
         PasswordRepository.saveFromAutofill(entry)
         Log.i(TAG, "✅ PasswordRepository.save() — credential stored successfully")
         PassKeyTrace.i("CredSave", "SAVE SUCCESS site=${entry.siteName} user=${entry.username} origin=${entry.loginUrl}")
+
+        Toast.makeText(this, "✅ Password saved for ${entry.siteName}", Toast.LENGTH_SHORT).show()
 
         val responseIntent = Intent()
         PendingIntentHandler.setCreateCredentialResponse(

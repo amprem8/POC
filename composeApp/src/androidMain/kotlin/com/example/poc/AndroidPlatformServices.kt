@@ -116,6 +116,10 @@ class AndroidPlatformServices(
         PasswordRepository.delete(id)
     }
 
+    override fun updateNotes(id: String, notes: String) {
+        PasswordRepository.updateNotes(id, notes)
+    }
+
     override fun enableOverlayMonitoringAfterLogin() {
         PassKeyTrace.i("AndroidPlatform", "enableOverlayMonitoringAfterLogin no-op; saving is owned by AutofillService")
     }
