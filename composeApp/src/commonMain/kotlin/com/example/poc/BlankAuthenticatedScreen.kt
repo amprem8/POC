@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,8 +55,19 @@ fun BlankAuthenticatedScreen(
 ) {
     val sidebarPrimaryTextColor = Color(0xFF1F2937)
     val sidebarSecondaryTextColor = Color(0xFF475569)
-    val drawerBackground = Color(0xFFCDD3DB)
-    val navItemColor = Color(0xFFB6BEC9)
+    val drawerBackground = Color.White
+    val navItemColor = Color(0xFFDCFCE7) // light green
+    val peacockBorderBrush = Brush.sweepGradient(
+        colors = listOf(
+            Color(0xFFFFB800), // Yellow
+            Color(0xFFFF7A00), // Orange
+            Color(0xFFFF3A3A), // Red
+            Color(0xFF7C4DFF), // Purple
+            Color(0xFF2196F3), // Blue
+            Color(0xFF00C853), // Green
+            Color(0xFFFFB800), // Yellow (close the loop)
+        ),
+    )
     var sidebarExpanded by rememberSaveable { mutableStateOf(false) }
 
     // ── Reactive entries: collect StateFlow if available, fallback to lifecycle refresh ──
@@ -87,7 +100,8 @@ fun BlankAuthenticatedScreen(
                             .size(44.dp)
                             .shadow(6.dp, CircleShape)
                             .clip(CircleShape)
-                            .background(Color(0xFF374151))
+                            .background(Color.Black)
+                            .border(2.dp, peacockBorderBrush, CircleShape)
                             .clickable { sidebarExpanded = true },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -167,7 +181,8 @@ fun BlankAuthenticatedScreen(
                                 .size(44.dp)
                                 .shadow(4.dp, CircleShape)
                                 .clip(CircleShape)
-                                .background(Color(0xFF374151))
+                                .background(Color.Black)
+                                .border(2.dp, peacockBorderBrush, CircleShape)
                                 .clickable { sidebarExpanded = false },
                             contentAlignment = Alignment.Center,
                         ) {
@@ -209,7 +224,7 @@ fun BlankAuthenticatedScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(Color(0xFFB4BCC8)),
+                            .background(Color(0xFFE5E7EB)),
                     )
 
                     Spacer(Modifier.height(16.dp))
@@ -264,7 +279,9 @@ private fun HamburgerIcon(tint: Color) {
     Column(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.size(20.dp),
+        modifier = Modifier
+            .width(20.dp)
+            .padding(vertical = 3.dp),
     ) {
         repeat(3) {
             Box(

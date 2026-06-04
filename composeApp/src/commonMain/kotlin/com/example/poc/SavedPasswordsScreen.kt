@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -112,24 +113,20 @@ fun SavedPasswordsScreen(
     }
 }
 
-// ── Accent color palette for cards ─────────────────────────────────────────────
-private val cardAccentColors = listOf(
-    Color(0xFF6366F1), // indigo
-    Color(0xFF8B5CF6), // violet
-    Color(0xFFEC4899), // pink
-    Color(0xFF14B8A6), // teal
-    Color(0xFFF59E0B), // amber
-    Color(0xFF3B82F6), // blue
-    Color(0xFF10B981), // emerald
-    Color(0xFFEF4444), // red
-    Color(0xFF06B6D4), // cyan
-    Color(0xFFF97316), // orange
+// ── Peacock gradient for card top border ────────────────────────────────────────
+private val peacockGradient = Brush.horizontalGradient(
+    colors = listOf(
+        Color(0xFFFFB800), // Yellow
+        Color(0xFFFF7A00), // Orange
+        Color(0xFFFF3A3A), // Red
+        Color(0xFF7C4DFF), // Purple
+        Color(0xFF2196F3), // Blue
+        Color(0xFF00C853), // Green
+    ),
 )
 
-private fun accentForEntry(entry: PasswordEntry): Color {
-    val hash = entry.loginUrl.hashCode().let { if (it < 0) -it else it }
-    return cardAccentColors[hash % cardAccentColors.size]
-}
+// Default accent for favicon fallback letters
+private val defaultAccent = Color(0xFF2196F3)
 
 @Composable
 private fun PasswordEntryCard(
@@ -138,23 +135,23 @@ private fun PasswordEntryCard(
     onUpdateNotes: (String) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    val accent = accentForEntry(entry)
+    val accent = defaultAccent
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(animationSpec = tween(300)),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column {
-            // ── Accent strip at the top ──────────────────────────────────────
+            // ── Peacock gradient strip at the top ──────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp)
-                    .background(accent),
+                    .background(peacockGradient),
             )
 
             Column(modifier = Modifier.padding(16.dp)) {
@@ -174,19 +171,19 @@ private fun PasswordEntryCard(
                             text = entry.siteName,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFF1F5F9),
+                            color = Color(0xFF1A1A2E),
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
                             text = entry.username,
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8),
+                            color = Color(0xFF6B7280),
                         )
                     }
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = if (expanded) "Collapse" else "Expand",
-                        tint = Color(0xFF94A3B8),
+                        tint = Color(0xFF6B7280),
                     )
                 }
 
@@ -240,21 +237,33 @@ private fun PasswordEntryCard(
     }
 }
 
+/**
+ * 3-tier favicon loading:
+ *  Tier 1 → DuckDuckGo Icons API (highest coverage, real site favicons)
+ *  Tier 2 → Google Favicon API (secondary fallback)
+ *  Tier 3 → First-letter fallback
+ */
 @Composable
 private fun FaviconAvatar(entry: PasswordEntry, accent: Color) {
-    val faviconUrl = entry.faviconUrl
-    var showFallback by rememberSaveable { mutableStateOf(faviconUrl.isBlank()) }
+    // 0 = trying DuckDuckGo, 1 = trying Google, 2 = letter fallback
+    var tier by rememberSaveable { mutableStateOf(if (entry.faviconUrl.isBlank()) 2 else 0) }
+
+    val currentUrl = when (tier) {
+        0 -> entry.faviconUrl
+        1 -> entry.fallbackFaviconUrl
+        else -> ""
+    }
 
     Box(
         modifier = Modifier
             .size(44.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (showFallback) accent.copy(alpha = 0.15f) else Color.Transparent),
+            .background(if (tier >= 2) accent.copy(alpha = 0.15f) else Color.Transparent),
         contentAlignment = Alignment.Center,
     ) {
-        if (!showFallback && faviconUrl.isNotBlank()) {
+        if (tier < 2 && currentUrl.isNotBlank()) {
             AsyncImage(
-                model = faviconUrl,
+                model = currentUrl,
                 contentDescription = "${entry.siteName} logo",
                 modifier = Modifier
                     .size(32.dp)
@@ -262,13 +271,13 @@ private fun FaviconAvatar(entry: PasswordEntry, accent: Color) {
                 contentScale = ContentScale.Fit,
                 onState = { state ->
                     if (state is AsyncImagePainter.State.Error) {
-                        showFallback = true
+                        tier = if (tier == 0 && entry.fallbackFaviconUrl.isNotBlank()) 1 else 2
                     }
                 },
             )
         }
 
-        if (showFallback) {
+        if (tier >= 2) {
             Text(
                 text = entry.siteName.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
                 color = accent,
@@ -302,7 +311,7 @@ private fun NotesField(
         Text(
             text = "Notes",
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF94A3B8),
+            color = Color(0xFF6B7280),
             fontWeight = FontWeight.Medium,
         )
         Spacer(Modifier.height(4.dp))
@@ -313,23 +322,23 @@ private fun NotesField(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF2A2A3C))
-                    .padding(12.dp),
-            ) {
-                if (notes.isEmpty()) {
-                    Text(
-                        text = "Add a note (max 60 chars)…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF64748B),
-                    )
-                }
-                BasicTextField(
-                    value = notes,
-                    onValueChange = { newValue ->
-                        if (newValue.length <= 60) notes = newValue
-                    },
-                    textStyle = TextStyle(
-                        color = Color(0xFFE2E8F0),
+                    .background(Color(0xFFF3F4F6))
+                     .padding(12.dp),
+             ) {
+                 if (notes.isEmpty()) {
+                     Text(
+                         text = "Add a note (max 60 chars)…",
+                         style = MaterialTheme.typography.bodySmall,
+                         color = Color(0xFF9CA3AF),
+                     )
+                 }
+                 BasicTextField(
+                     value = notes,
+                     onValueChange = { newValue ->
+                         if (newValue.length <= 60) notes = newValue
+                     },
+                     textStyle = TextStyle(
+                         color = Color(0xFF1F2937),
                         fontSize = 14.sp,
                     ),
                     cursorBrush = SolidColor(accent),
@@ -350,7 +359,7 @@ private fun NotesField(
             Text(
                 text = "${notes.length}/60",
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF64748B),
+                color = Color(0xFF9CA3AF),
                 modifier = Modifier.align(Alignment.End),
             )
         } else {
@@ -359,14 +368,14 @@ private fun NotesField(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF2A2A3C))
-                    .clickable { editing = true }
-                    .padding(12.dp),
-            ) {
-                Text(
-                    text = notes.ifEmpty { "Tap to add a note…" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (notes.isEmpty()) Color(0xFF64748B) else Color(0xFFE2E8F0),
+                    .background(Color(0xFFF3F4F6))
+                     .clickable { editing = true }
+                     .padding(12.dp),
+             ) {
+                 Text(
+                     text = notes.ifEmpty { "Tap to add a note…" },
+                     style = MaterialTheme.typography.bodySmall,
+                     color = if (notes.isEmpty()) Color(0xFF9CA3AF) else Color(0xFF1F2937),
                 )
             }
         }
@@ -386,7 +395,7 @@ private fun EntryDetailRow(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF94A3B8),
+            color = Color(0xFF6B7280),
             fontWeight = FontWeight.Medium,
         )
         Spacer(Modifier.height(2.dp))
@@ -394,7 +403,7 @@ private fun EntryDetailRow(
             Text(
                 text = if (isPassword && !passwordVisible) "•".repeat(value.length.coerceAtLeast(1)) else value,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFFE2E8F0),
+                color = Color(0xFF1F2937),
                 modifier = Modifier.weight(1f),
             )
             if (isPassword) {
