@@ -25,10 +25,10 @@ import androidx.annotation.RequiresApi
 /**
  * Android Autofill Framework service — the PRIMARY save and fill path.
  *
- * Architecture (Bitwarden-style):
+ * Architecture ():
  *  1. [onFillRequest] → parses AssistStructure → returns FillResponse with:
  *     • Matching credential datasets (if any)
- *     • A placeholder dataset to force field tracking (Bitwarden pattern)
+ *     • A placeholder dataset to force field tracking
  *     • SaveInfo attached to username+password autofill IDs
  *  2. User fills in and submits the form
  *  3. Android framework detects field values changed → shows save prompt
