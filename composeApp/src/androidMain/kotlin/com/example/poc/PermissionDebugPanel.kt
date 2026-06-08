@@ -1,5 +1,7 @@
 package com.example.poc
 
+import com.example.poc.vault.*
+
 import android.content.Context
 import android.os.Build
 import android.provider.Settings

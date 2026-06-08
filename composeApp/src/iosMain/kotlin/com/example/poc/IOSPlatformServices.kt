@@ -1,5 +1,7 @@
 package com.example.poc
 
+import com.example.poc.vault.*
+
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf

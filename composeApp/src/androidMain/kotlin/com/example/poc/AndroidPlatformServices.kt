@@ -1,5 +1,7 @@
 package com.example.poc
 
+import com.example.poc.vault.*
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
