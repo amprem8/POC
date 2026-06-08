@@ -18,7 +18,7 @@ import platform.UIKit.UIPasteboard
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-private const val PassKeyConfigKey = "passkey_config"
+private const val VaultConfigKey = "vault_config"
 private const val PasswordEntriesKey = "password_entries"
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -33,12 +33,12 @@ class IOSPlatformServices : PlatformServices {
 
     init { _entries.value = loadPasswordEntries() }
 
-    override fun loadPassKeyConfig(): PassKeyConfig? {
-        return decodePassKeyConfig(defaults.stringForKey(PassKeyConfigKey))
+    override fun loadVaultConfig(): VaultConfig? {
+        return decodeVaultConfig(defaults.stringForKey(VaultConfigKey))
     }
 
-    override fun savePassKeyConfig(config: PassKeyConfig) {
-        defaults.setObject(encodePassKeyConfig(config), forKey = PassKeyConfigKey)
+    override fun saveVaultConfig(config: VaultConfig) {
+        defaults.setObject(encodeVaultConfig(config), forKey = VaultConfigKey)
     }
 
     override suspend fun promptBiometric(promptTitle: String, promptSubtitle: String): Boolean {

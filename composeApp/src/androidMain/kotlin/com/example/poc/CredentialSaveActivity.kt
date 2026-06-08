@@ -15,10 +15,10 @@ import androidx.fragment.app.FragmentActivity
  * Handles the Credential Manager "Save password" flow on Android 14+.
  *
  * Chrome and other Credential-Manager-aware browsers call this when the user
- * chooses "Save to PassKey" from the system save sheet.  We extract username +
+ * chooses "Save to Vault" from the system save sheet.  We extract username +
  * password from the [CreatePasswordRequest] and persist them through
  * [PasswordRepository.saveFromAutofill] — the same single save path used by
- * [PassKeyAutofillService.onSaveRequest].
+ * [VaultAutofillService.onSaveRequest].
  *
  * There is intentionally NO second confirmation dialog here: Android's system
  * save sheet already acts as the single user-facing confirmation step.
@@ -27,33 +27,33 @@ import androidx.fragment.app.FragmentActivity
 class CredentialSaveActivity : FragmentActivity() {
 
     companion object {
-        private const val TAG = "PassKeyCredSave"
+        private const val TAG = "VaultCredSave"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         Log.i(TAG, " CredentialSaveActivity.onCreate  intent=$intent")
-        PassKeyTrace.i("CredSave", "onCreate launched intent action=${intent?.action} extras=${intent?.extras?.keySet()}")
+        VaultTrace.i("CredSave", "onCreate launched intent action=${intent?.action} extras=${intent?.extras?.keySet()}")
 
         PasswordRepository.init(this)
 
         val request = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent)
         if (request == null) {
             Log.w(TAG, "❌ No CreateCredentialRequest in intent — aborting")
-            PassKeyTrace.w("CredSave", "onCreate aborted — PendingIntentHandler returned null request")
+            VaultTrace.w("CredSave", "onCreate aborted — PendingIntentHandler returned null request")
             setResult(Activity.RESULT_CANCELED)
             finish()
             return
         }
 
         Log.i(TAG, "  request type=${request.callingRequest::class.java.simpleName}  pkg=${request.callingAppInfo.packageName}")
-        PassKeyTrace.i("CredSave", "request type=${request.callingRequest::class.java.simpleName} callingPkg=${request.callingAppInfo.packageName}")
+        VaultTrace.i("CredSave", "request type=${request.callingRequest::class.java.simpleName} callingPkg=${request.callingAppInfo.packageName}")
 
         val createRequest = request.callingRequest
         if (createRequest !is CreatePasswordRequest) {
             Log.w(TAG, "❌ Unsupported request type ${createRequest::class.java.simpleName} — expected CreatePasswordRequest")
-            PassKeyTrace.w("CredSave", "unsupported request type ${createRequest::class.java.simpleName}")
+            VaultTrace.w("CredSave", "unsupported request type ${createRequest::class.java.simpleName}")
             setResult(Activity.RESULT_CANCELED)
             finish()
             return
@@ -72,11 +72,11 @@ class CredentialSaveActivity : FragmentActivity() {
         val origin = normalizeCredentialOrigin(rawOrigin)
 
         Log.i(TAG, "  user='$username'  passLen=${password.length}  origin=$origin  rawOrigin=$rawOrigin")
-        PassKeyTrace.i("CredSave", "credentials received user='$username' passLen=${password.length} origin=$origin rawOrigin=$rawOrigin")
+        VaultTrace.i("CredSave", "credentials received user='$username' passLen=${password.length} origin=$origin rawOrigin=$rawOrigin")
 
         if (username.isBlank() || password.isBlank()) {
             Log.w(TAG, "❌ Blank username or password — skipping save. user='$username' passLen=${password.length}")
-            PassKeyTrace.w("CredSave", "skipped — blank credentials user='$username' passLen=${password.length}")
+            VaultTrace.w("CredSave", "skipped — blank credentials user='$username' passLen=${password.length}")
             setResult(Activity.RESULT_CANCELED)
             finish()
             return
@@ -94,7 +94,7 @@ class CredentialSaveActivity : FragmentActivity() {
         Log.i(TAG, "✅ Saving: site=${entry.siteName}  user=${entry.username}  origin=${entry.loginUrl}")
         PasswordRepository.saveFromAutofill(entry)
         Log.i(TAG, "✅ PasswordRepository.save() — credential stored successfully")
-        PassKeyTrace.i("CredSave", "SAVE SUCCESS site=${entry.siteName} user=${entry.username} origin=${entry.loginUrl}")
+        VaultTrace.i("CredSave", "SAVE SUCCESS site=${entry.siteName} user=${entry.username} origin=${entry.loginUrl}")
 
         Toast.makeText(this, "✅ Password saved for ${entry.siteName}", Toast.LENGTH_SHORT).show()
 

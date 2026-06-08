@@ -31,7 +31,7 @@ fun OpeningSplashScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            PassKeyLogo(size = 112.dp, cornerRadius = 28.dp)
+            VaultLogo(size = 112.dp, cornerRadius = 28.dp)
             Text(
                 text = AppName,
                 style = MaterialTheme.typography.headlineMedium,

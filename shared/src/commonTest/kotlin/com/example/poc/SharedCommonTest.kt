@@ -14,7 +14,7 @@ class SharedCommonTest {
 
         val state = controller.bootstrap(savedConfig = null, biometricAvailable = true)
 
-        assertEquals(PassKeyRoute.CreateMasterPassword, state.route)
+        assertEquals(VaultRoute.CreateMasterPassword, state.route)
         assertTrue(state.biometricAvailable)
     }
 
@@ -25,24 +25,24 @@ class SharedCommonTest {
 
         controller.bootstrap(savedConfig = null, biometricAvailable = true)
         val passwordResult = controller.createMasterPassword("supersecret", "supersecret")
-        assertEquals(PassKeyRoute.EnableBiometric, passwordResult.uiState.route)
+        assertEquals(VaultRoute.EnableBiometric, passwordResult.uiState.route)
         assertTrue(passwordResult.uiState.biometricRequired)
 
         val biometricResult = controller.saveBiometricPreference(enabled = true)
-        assertEquals(PassKeyRoute.RecoveryPhrase, biometricResult.uiState.route)
+        assertEquals(VaultRoute.RecoveryPhrase, biometricResult.uiState.route)
         assertEquals(phrase, biometricResult.uiState.recoveryPhrase)
         assertNotNull(biometricResult.persistedConfig)
         assertTrue(biometricResult.persistedConfig.biometricEnabled)
         assertFalse(biometricResult.persistedConfig.recoveryPhraseAcknowledged)
 
         val finishResult = controller.finishRecoveryPhraseStep()
-        assertEquals(PassKeyRoute.Main, finishResult.uiState.route)
+        assertEquals(VaultRoute.Main, finishResult.uiState.route)
         assertTrue(finishResult.persistedConfig?.recoveryPhraseAcknowledged == true)
     }
 
     @Test
     fun `master password unlock works after bootstrap`() {
-        val config = PassKeyConfig(
+        val config = VaultConfig(
             masterPassword = "supersecret",
             biometricEnabled = false,
             recoveryPhrase = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu",
@@ -51,15 +51,15 @@ class SharedCommonTest {
         val controller = VaultAppController()
 
         val state = controller.bootstrap(savedConfig = config, biometricAvailable = false)
-        assertEquals(PassKeyRoute.Login, state.route)
+        assertEquals(VaultRoute.Login, state.route)
 
         val unlockResult = controller.unlockWithPassword("supersecret")
-        assertEquals(PassKeyRoute.Main, unlockResult.uiState.route)
+        assertEquals(VaultRoute.Main, unlockResult.uiState.route)
     }
 
     @Test
     fun `forgot password verifies recovery phrase and updates master password`() {
-        val config = PassKeyConfig(
+        val config = VaultConfig(
             masterPassword = "oldpassword",
             biometricEnabled = true,
             recoveryPhrase = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu",
@@ -68,13 +68,13 @@ class SharedCommonTest {
         val controller = VaultAppController()
 
         controller.bootstrap(savedConfig = config, biometricAvailable = true)
-        assertEquals(PassKeyRoute.ForgotPassword, controller.openForgotPassword().route)
+        assertEquals(VaultRoute.ForgotPassword, controller.openForgotPassword().route)
 
         val recoveryState = controller.verifyRecoveryPhrase(config.recoveryPhrase)
-        assertEquals(PassKeyRoute.ResetPassword, recoveryState.route)
+        assertEquals(VaultRoute.ResetPassword, recoveryState.route)
 
         val resetResult = controller.saveResetPassword("newpassword", "newpassword")
-        assertEquals(PassKeyRoute.Main, resetResult.uiState.route)
+        assertEquals(VaultRoute.Main, resetResult.uiState.route)
         assertEquals("newpassword", resetResult.persistedConfig?.masterPassword)
     }
 
@@ -87,7 +87,7 @@ class SharedCommonTest {
 
         val result = controller.saveBiometricPreference(enabled = false)
 
-        assertEquals(PassKeyRoute.EnableBiometric, result.uiState.route)
+        assertEquals(VaultRoute.EnableBiometric, result.uiState.route)
         assertTrue(result.uiState.biometricRequired)
         assertTrue(result.uiState.message?.isError == true)
     }
@@ -99,7 +99,7 @@ class SharedCommonTest {
         controller.bootstrap(savedConfig = null, biometricAvailable = false)
         val result = controller.createMasterPassword("short", "short")
 
-        assertEquals(PassKeyRoute.CreateMasterPassword, result.uiState.route)
+        assertEquals(VaultRoute.CreateMasterPassword, result.uiState.route)
         assertTrue(result.uiState.message?.isError == true)
     }
 }

@@ -2,7 +2,7 @@
 
 <!-- Accessibility service configuration — overlay UI and fill-assist only.
      This service does NOT detect login forms, extract credentials, or trigger saves.
-     All credential saving is handled by PassKeyAutofillService (Android Autofill Framework). -->
+     All credential saving is handled by VaultAutofillService (Android Autofill Framework). -->
 <accessibility-service
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/accessibility_service_description"

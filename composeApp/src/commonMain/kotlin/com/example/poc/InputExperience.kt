@@ -17,19 +17,19 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 
 @Composable
-fun rememberPassKeyInputController(): PassKeyInputController {
+fun rememberVaultInputController(): VaultInputController {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
     return remember(focusManager, keyboardController) {
-        PassKeyInputController(
+        VaultInputController(
             focusManager = focusManager,
             keyboardController = keyboardController,
         )
     }
 }
 
-class PassKeyInputController internal constructor(
+class VaultInputController internal constructor(
     private val focusManager: FocusManager,
     private val keyboardController: SoftwareKeyboardController?,
 ) {
@@ -58,7 +58,7 @@ class PassKeyInputController internal constructor(
     }
 }
 
-fun Modifier.dismissKeyboardOnTapOutside(inputController: PassKeyInputController): Modifier = composed {
+fun Modifier.dismissKeyboardOnTapOutside(inputController: VaultInputController): Modifier = composed {
     pointerInput(inputController) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)

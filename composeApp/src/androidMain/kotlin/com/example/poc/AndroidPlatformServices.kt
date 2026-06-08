@@ -33,13 +33,13 @@ class AndroidPlatformServices(
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
             BiometricManager.BIOMETRIC_SUCCESS
 
-    // ── PassKey config ────────────────────────────────────────────────────
+    // ── Vault config ────────────────────────────────────────────────────
 
-    override fun loadPassKeyConfig(): PassKeyConfig? =
-        decodePassKeyConfig(preferences.getString("passkey_config", null))
+    override fun loadVaultConfig(): VaultConfig? =
+        decodeVaultConfig(preferences.getString("vault_config", null))
 
-    override fun savePassKeyConfig(config: PassKeyConfig) {
-        preferences.edit { putString("passkey_config", encodePassKeyConfig(config)) }
+    override fun saveVaultConfig(config: VaultConfig) {
+        preferences.edit { putString("vault_config", encodeVaultConfig(config)) }
     }
 
     // ── Biometric ─────────────────────────────────────────────────────────
@@ -107,12 +107,12 @@ class AndroidPlatformServices(
 
     override fun loadPasswordEntries(): List<PasswordEntry> {
         val snapshot = PasswordRepository.snapshot()
-        PassKeyTrace.d("AndroidPlatform", "loadPasswordEntries size=${snapshot.size}")
+        VaultTrace.d("AndroidPlatform", "loadPasswordEntries size=${snapshot.size}")
         return snapshot
     }
 
     override fun deletePasswordEntry(id: String) {
-        PassKeyTrace.i("AndroidPlatform", "deletePasswordEntry id=$id")
+        VaultTrace.i("AndroidPlatform", "deletePasswordEntry id=$id")
         PasswordRepository.delete(id)
     }
 
@@ -121,6 +121,6 @@ class AndroidPlatformServices(
     }
 
     override fun enableOverlayMonitoringAfterLogin() {
-        PassKeyTrace.i("AndroidPlatform", "enableOverlayMonitoringAfterLogin no-op; saving is owned by AutofillService")
+        VaultTrace.i("AndroidPlatform", "enableOverlayMonitoringAfterLogin no-op; saving is owned by AutofillService")
     }
 }

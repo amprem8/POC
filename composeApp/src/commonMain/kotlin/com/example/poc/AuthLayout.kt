@@ -33,10 +33,10 @@ import androidx.compose.ui.unit.dp
 fun AuthScreenLayout(
     title: String,
     subtitle: String,
-    message: PassKeyMessage? = null,
+    message: VaultMessage? = null,
     content: @Composable () -> Unit,
 ) {
-    val inputController = rememberPassKeyInputController()
+    val inputController = rememberVaultInputController()
     val scrollState = rememberScrollState()
 
     Box(
@@ -73,7 +73,7 @@ fun AuthScreenLayout(
                         .padding(horizontal = 28.dp, vertical = 30.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    PassKeyLogo(size = 72.dp, cornerRadius = 20.dp)
+                    VaultLogo(size = 72.dp, cornerRadius = 20.dp)
                     Spacer(modifier = Modifier.height(18.dp))
                     Text(
                         text = AppName.uppercase(),
@@ -106,7 +106,7 @@ fun AuthScreenLayout(
 }
 
 @Composable
-fun InlineMessage(message: PassKeyMessage) {
+fun InlineMessage(message: VaultMessage) {
     val background = if (message.isError) Color(0xFFFEF2F2) else Color(0xFFEFF6FF)
     val foreground = if (message.isError) Color(0xFFB91C1C) else Color(0xFF1D4ED8)
 

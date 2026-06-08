@@ -24,12 +24,12 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun ForgotPasswordScreen(
-    message: PassKeyMessage?,
+    message: VaultMessage?,
     onVerify: (String) -> Unit,
     onBackToLogin: () -> Unit,
 ) {
     var recoveryPhrase by rememberSaveable { mutableStateOf("") }
-    val inputController = rememberPassKeyInputController()
+    val inputController = rememberVaultInputController()
 
     AuthScreenLayout(
         title = "Forgot password",

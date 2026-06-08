@@ -2,7 +2,7 @@ package com.example.poc
 
 import kotlin.random.Random
 
-enum class PassKeyRoute {
+enum class VaultRoute {
     Splash,
     CreateMasterPassword,
     EnableBiometric,
@@ -14,12 +14,12 @@ enum class PassKeyRoute {
     Main,
 }
 
-data class PassKeyMessage(
+data class VaultMessage(
     val text: String,
     val isError: Boolean = false,
 )
 
-data class PassKeyConfig(
+data class VaultConfig(
     val masterPassword: String,
     val biometricEnabled: Boolean,
     val recoveryPhrase: String,
@@ -27,18 +27,18 @@ data class PassKeyConfig(
     val onboardingSeen: Boolean = false,   // true after user completes the first-time setup flow
 )
 
-data class PassKeyUiState(
-    val route: PassKeyRoute = PassKeyRoute.Splash,
+data class VaultUiState(
+    val route: VaultRoute = VaultRoute.Splash,
     val biometricAvailable: Boolean = false,
     val biometricEnabled: Boolean = false,
     val biometricRequired: Boolean = false,
     val recoveryPhrase: String = "",
-    val message: PassKeyMessage? = null,
+    val message: VaultMessage? = null,
 )
 
-data class PassKeyActionResult(
-    val uiState: PassKeyUiState,
-    val persistedConfig: PassKeyConfig? = null,
+data class VaultActionResult(
+    val uiState: VaultUiState,
+    val persistedConfig: VaultConfig? = null,
 )
 
 private data class PendingSetup(
@@ -49,13 +49,13 @@ private data class PendingSetup(
 class VaultAppController(
     private val recoveryPhraseProvider: () -> String = ::generateRecoveryPhrase,
 ) {
-    private var currentConfig: PassKeyConfig? = null
+    private var currentConfig: VaultConfig? = null
     private var pendingSetup: PendingSetup? = null
     private var biometricSetupRequired = false
     private var recoveryVerified = false
     private var biometricAvailable = false
 
-    fun bootstrap(savedConfig: PassKeyConfig?, biometricAvailable: Boolean): PassKeyUiState {
+    fun bootstrap(savedConfig: VaultConfig?, biometricAvailable: Boolean): VaultUiState {
         currentConfig = savedConfig
         pendingSetup = null
         biometricSetupRequired = false
@@ -63,34 +63,34 @@ class VaultAppController(
         this.biometricAvailable = biometricAvailable
 
         return when {
-            savedConfig == null -> PassKeyUiState(
-                route = PassKeyRoute.CreateMasterPassword,
+            savedConfig == null -> VaultUiState(
+                route = VaultRoute.CreateMasterPassword,
                 biometricAvailable = biometricAvailable,
             )
 
-            !savedConfig.recoveryPhraseAcknowledged -> PassKeyUiState(
-                route = PassKeyRoute.RecoveryPhrase,
+            !savedConfig.recoveryPhraseAcknowledged -> VaultUiState(
+                route = VaultRoute.RecoveryPhrase,
                 biometricAvailable = biometricAvailable,
                 biometricEnabled = savedConfig.biometricEnabled,
                 recoveryPhrase = savedConfig.recoveryPhrase,
-                message = PassKeyMessage("Save your recovery phrase. This is the only screen where it will be shown in full."),
+                message = VaultMessage("Save your recovery phrase. This is the only screen where it will be shown in full."),
             )
 
             else -> loginState()
         }
     }
 
-    fun createMasterPassword(password: String, confirmPassword: String): PassKeyActionResult {
+    fun createMasterPassword(password: String, confirmPassword: String): VaultActionResult {
         val normalizedPassword = password.trim()
         val normalizedConfirmPassword = confirmPassword.trim()
 
         val validationMessage = validatePassword(normalizedPassword, normalizedConfirmPassword)
         if (validationMessage != null) {
-            return PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.CreateMasterPassword,
+            return VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.CreateMasterPassword,
                     biometricAvailable = biometricAvailable,
-                    message = PassKeyMessage(validationMessage, isError = true),
+                    message = VaultMessage(validationMessage, isError = true),
                 ),
             )
         }
@@ -102,9 +102,9 @@ class VaultAppController(
         biometricSetupRequired = biometricAvailable
 
         return if (biometricAvailable) {
-            PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.EnableBiometric,
+            VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.EnableBiometric,
                     biometricAvailable = true,
                     biometricRequired = true,
                 ),
@@ -114,14 +114,14 @@ class VaultAppController(
         }
     }
 
-    fun saveBiometricPreference(enabled: Boolean): PassKeyActionResult {
+    fun saveBiometricPreference(enabled: Boolean): VaultActionResult {
         if (biometricSetupRequired && !enabled) {
-            return PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.EnableBiometric,
+            return VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.EnableBiometric,
                     biometricAvailable = biometricAvailable,
                     biometricRequired = true,
-                    message = PassKeyMessage(
+                    message = VaultMessage(
                         "Fingerprint verification is required to finish first-time setup on this device.",
                         isError = true,
                     ),
@@ -132,11 +132,11 @@ class VaultAppController(
         return persistPendingSetup(enableBiometric = enabled)
     }
 
-    fun finishRecoveryPhraseStep(): PassKeyActionResult {
+    fun finishRecoveryPhraseStep(): VaultActionResult {
         val updatedConfig = currentConfig?.copy(recoveryPhraseAcknowledged = true)
-            ?: return PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.CreateMasterPassword,
+            ?: return VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.CreateMasterPassword,
                     biometricAvailable = biometricAvailable,
                 ),
             )
@@ -146,9 +146,9 @@ class VaultAppController(
         biometricSetupRequired = false
 
         // First-time user: route to onboarding after recovery phrase step
-        val targetRoute = if (!updatedConfig.onboardingSeen) PassKeyRoute.Onboarding else PassKeyRoute.Main
-        return PassKeyActionResult(
-            uiState = PassKeyUiState(
+        val targetRoute = if (!updatedConfig.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
+        return VaultActionResult(
+            uiState = VaultUiState(
                 route = targetRoute,
                 biometricAvailable = biometricAvailable,
                 biometricEnabled = updatedConfig.biometricEnabled,
@@ -157,70 +157,70 @@ class VaultAppController(
         )
     }
 
-    fun unlockWithPassword(password: String): PassKeyActionResult {
+    fun unlockWithPassword(password: String): VaultActionResult {
         val config = currentConfig
         if (config == null) {
-            return PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.CreateMasterPassword,
+            return VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.CreateMasterPassword,
                     biometricAvailable = biometricAvailable,
                 ),
             )
         }
 
         return if (password == config.masterPassword) {
-            val target = if (!config.onboardingSeen) PassKeyRoute.Onboarding else PassKeyRoute.Main
-            PassKeyActionResult(
-                uiState = PassKeyUiState(
+            val target = if (!config.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
+            VaultActionResult(
+                uiState = VaultUiState(
                     route = target,
                     biometricAvailable = biometricAvailable,
                     biometricEnabled = config.biometricEnabled,
                 ),
             )
         } else {
-            PassKeyActionResult(
-                uiState = loginState(message = PassKeyMessage("Incorrect master password.", isError = true)),
+            VaultActionResult(
+                uiState = loginState(message = VaultMessage("Incorrect master password.", isError = true)),
             )
         }
     }
 
-    fun unlockWithBiometric(): PassKeyActionResult {
+    fun unlockWithBiometric(): VaultActionResult {
         val config = currentConfig
         return if (config?.biometricEnabled == true) {
-            val target = if (!config.onboardingSeen) PassKeyRoute.Onboarding else PassKeyRoute.Main
-            PassKeyActionResult(
-                uiState = PassKeyUiState(
+            val target = if (!config.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
+            VaultActionResult(
+                uiState = VaultUiState(
                     route = target,
                     biometricAvailable = biometricAvailable,
                     biometricEnabled = true,
                 ),
             )
         } else {
-            PassKeyActionResult(
-                uiState = loginState(message = PassKeyMessage("Biometric unlock is not enabled on this device.", isError = true)),
+            VaultActionResult(
+                uiState = loginState(message = VaultMessage("Biometric unlock is not enabled on this device.", isError = true)),
             )
         }
     }
 
-    fun openForgotPassword(): PassKeyUiState {
+    fun openForgotPassword(): VaultUiState {
         recoveryVerified = false
-        return PassKeyUiState(
-            route = PassKeyRoute.ForgotPassword,
+        return VaultUiState(
+            route = VaultRoute.ForgotPassword,
             biometricAvailable = biometricAvailable,
             biometricEnabled = currentConfig?.biometricEnabled == true,
         )
     }
 
-    fun cancelForgotPassword(): PassKeyUiState {
+    fun cancelForgotPassword(): VaultUiState {
         recoveryVerified = false
         return loginState()
     }
 
-    fun verifyRecoveryPhrase(input: String): PassKeyUiState {
+    fun verifyRecoveryPhrase(input: String): VaultUiState {
         val config = currentConfig
         if (config == null) {
-            return PassKeyUiState(
-                route = PassKeyRoute.CreateMasterPassword,
+            return VaultUiState(
+                route = VaultRoute.CreateMasterPassword,
                 biometricAvailable = biometricAvailable,
             )
         }
@@ -229,30 +229,30 @@ class VaultAppController(
         recoveryVerified = normalizedInput == config.recoveryPhrase
 
         return if (recoveryVerified) {
-            PassKeyUiState(
-                route = PassKeyRoute.ResetPassword,
+            VaultUiState(
+                route = VaultRoute.ResetPassword,
                 biometricAvailable = biometricAvailable,
                 biometricEnabled = config.biometricEnabled,
-                message = PassKeyMessage("Recovery phrase verified. Create a new master password."),
+                message = VaultMessage("Recovery phrase verified. Create a new master password."),
             )
         } else {
-            PassKeyUiState(
-                route = PassKeyRoute.ForgotPassword,
+            VaultUiState(
+                route = VaultRoute.ForgotPassword,
                 biometricAvailable = biometricAvailable,
                 biometricEnabled = config.biometricEnabled,
-                message = PassKeyMessage("Recovery phrase does not match the one saved for this install.", isError = true),
+                message = VaultMessage("Recovery phrase does not match the one saved for this install.", isError = true),
             )
         }
     }
 
-    fun saveResetPassword(password: String, confirmPassword: String): PassKeyActionResult {
+    fun saveResetPassword(password: String, confirmPassword: String): VaultActionResult {
         if (!recoveryVerified) {
-            return PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.ForgotPassword,
+            return VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.ForgotPassword,
                     biometricAvailable = biometricAvailable,
                     biometricEnabled = currentConfig?.biometricEnabled == true,
-                    message = PassKeyMessage("Verify the recovery phrase before setting a new master password.", isError = true),
+                    message = VaultMessage("Verify the recovery phrase before setting a new master password.", isError = true),
                 ),
             )
         }
@@ -261,20 +261,20 @@ class VaultAppController(
         val normalizedConfirmPassword = confirmPassword.trim()
         val validationMessage = validatePassword(normalizedPassword, normalizedConfirmPassword)
         if (validationMessage != null) {
-            return PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.ResetPassword,
+            return VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.ResetPassword,
                     biometricAvailable = biometricAvailable,
                     biometricEnabled = currentConfig?.biometricEnabled == true,
-                    message = PassKeyMessage(validationMessage, isError = true),
+                    message = VaultMessage(validationMessage, isError = true),
                 ),
             )
         }
 
         val updatedConfig = currentConfig?.copy(masterPassword = normalizedPassword)
-            ?: return PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.CreateMasterPassword,
+            ?: return VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.CreateMasterPassword,
                     biometricAvailable = biometricAvailable,
                 ),
             )
@@ -282,13 +282,13 @@ class VaultAppController(
         currentConfig = updatedConfig
         recoveryVerified = false
 
-        val target = if (!updatedConfig.onboardingSeen) PassKeyRoute.Onboarding else PassKeyRoute.Main
-        return PassKeyActionResult(
-            uiState = PassKeyUiState(
+        val target = if (!updatedConfig.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
+        return VaultActionResult(
+            uiState = VaultUiState(
                 route = target,
                 biometricAvailable = biometricAvailable,
                 biometricEnabled = updatedConfig.biometricEnabled,
-                message = PassKeyMessage("Master password updated successfully."),
+                message = VaultMessage("Master password updated successfully."),
             ),
             persistedConfig = updatedConfig,
         )
@@ -306,17 +306,17 @@ class VaultAppController(
         }.trimEnd()
     }
 
-    private fun persistPendingSetup(enableBiometric: Boolean): PassKeyActionResult {
+    private fun persistPendingSetup(enableBiometric: Boolean): VaultActionResult {
         val setup = pendingSetup
-            ?: return PassKeyActionResult(
-                uiState = PassKeyUiState(
-                    route = PassKeyRoute.CreateMasterPassword,
+            ?: return VaultActionResult(
+                uiState = VaultUiState(
+                    route = VaultRoute.CreateMasterPassword,
                     biometricAvailable = biometricAvailable,
-                    message = PassKeyMessage("Start by creating a master password.", isError = true),
+                    message = VaultMessage("Start by creating a master password.", isError = true),
                 ),
             )
 
-        val config = PassKeyConfig(
+        val config = VaultConfig(
             masterPassword = setup.masterPassword,
             biometricEnabled = enableBiometric,
             recoveryPhrase = setup.recoveryPhrase,
@@ -325,22 +325,22 @@ class VaultAppController(
         currentConfig = config
         biometricSetupRequired = false
 
-        return PassKeyActionResult(
-            uiState = PassKeyUiState(
-                route = PassKeyRoute.RecoveryPhrase,
+        return VaultActionResult(
+            uiState = VaultUiState(
+                route = VaultRoute.RecoveryPhrase,
                 biometricAvailable = biometricAvailable,
                 biometricEnabled = enableBiometric,
                 recoveryPhrase = config.recoveryPhrase,
-                message = PassKeyMessage("Copy or download your recovery phrase before continuing."),
+                message = VaultMessage("Copy or download your recovery phrase before continuing."),
             ),
             persistedConfig = config,
         )
     }
 
-    private fun loginState(message: PassKeyMessage? = null): PassKeyUiState {
+    private fun loginState(message: VaultMessage? = null): VaultUiState {
         val config = currentConfig
-        return PassKeyUiState(
-            route = PassKeyRoute.Login,
+        return VaultUiState(
+            route = VaultRoute.Login,
             biometricAvailable = biometricAvailable,
             biometricEnabled = config?.biometricEnabled == true,
             message = message,

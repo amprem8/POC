@@ -9,28 +9,28 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 
 /**
- * Central helper for firing PassKey notifications.
+ * Central helper for firing Vault notifications.
  *
  * Only used for "password saved" confirmation notifications.
- * All credential saving flows through [PassKeyAutofillService.onSaveRequest]
+ * All credential saving flows through [VaultAutofillService.onSaveRequest]
  * or [CredentialSaveActivity] — no accessibility-based notifications.
  */
 object NotificationHelper {
 
-    private const val TAG = "PassKeyNotifHelper"
+    private const val TAG = "VaultNotifHelper"
 
-    /** "Password saved" confirmation notification — tapping opens PassKey vault. */
+    /** "Password saved" confirmation notification — tapping opens Vault vault. */
     fun showSaved(context: Context, siteName: String, username: String) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         val pi = PendingIntent.getActivity(
-            context, PassKeyApplication.NOTIF_SAVED, intent,
+            context, VaultApplication.NOTIF_SAVED, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notif = NotificationCompat.Builder(context, PassKeyApplication.CHANNEL_SAVED)
-            .setSmallIcon(R.drawable.passkey_logo)
-            .setContentTitle("Password saved to PassKey")
+        val notif = NotificationCompat.Builder(context, VaultApplication.CHANNEL_SAVED)
+            .setSmallIcon(R.drawable.vault_logo)
+            .setContentTitle("Password saved to Vault")
             .setContentText("$siteName · $username")
             .setAutoCancel(true)
             .setContentIntent(pi)
@@ -39,7 +39,7 @@ object NotificationHelper {
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .build()
 
-        mgr(context).notify(PassKeyApplication.NOTIF_SAVED, notif)
+        mgr(context).notify(VaultApplication.NOTIF_SAVED, notif)
     }
 
     private fun mgr(ctx: Context) = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

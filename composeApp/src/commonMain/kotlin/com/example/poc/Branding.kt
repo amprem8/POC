@@ -10,19 +10,19 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import org.jetbrains.compose.resources.painterResource
 import poc.composeapp.generated.resources.Res
-import poc.composeapp.generated.resources.passkey_logo
+import poc.composeapp.generated.resources.vault_logo
 
-const val AppName = "PassKey"
+const val AppName = "Vault"
 const val AppTagline = "Secure Password Manager"
 
 @Composable
-fun PassKeyLogo(
+fun VaultLogo(
     size: Dp,
     cornerRadius: Dp,
     modifier: Modifier = Modifier,
 ) {
     Image(
-        painter = painterResource(Res.drawable.passkey_logo),
+        painter = painterResource(Res.drawable.vault_logo),
         contentDescription = AppName,
         modifier = modifier
             .size(size)

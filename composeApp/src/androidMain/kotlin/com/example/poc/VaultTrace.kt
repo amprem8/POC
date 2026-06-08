@@ -2,7 +2,7 @@ package com.example.poc
 
 import android.util.Log
 
-object PassKeyTrace {
+object VaultTrace {
     const val TAG = "PK_TRACE"
 
     fun v(source: String, message: String) {

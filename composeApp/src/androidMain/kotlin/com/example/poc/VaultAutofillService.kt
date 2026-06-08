@@ -42,10 +42,10 @@ import androidx.annotation.RequiresApi
  * Both paths converge on [PasswordRepository.saveFromAutofill].
  */
 @RequiresApi(Build.VERSION_CODES.O)
-class PassKeyAutofillService : AutofillService() {
+class VaultAutofillService : AutofillService() {
 
     companion object {
-        private const val TAG = "PassKeyAutofill"
+        private const val TAG = "VaultAutofill"
 
         /**
          * HTML tags that represent actual input elements (can hold user-typed values).
@@ -68,13 +68,13 @@ class PassKeyAutofillService : AutofillService() {
         super.onConnected()
         PasswordRepository.init(this)
         Log.i(TAG, "✅ onConnected — autofill service bound. entries=${PasswordRepository.snapshot().size} SDK=${Build.VERSION.SDK_INT}")
-        PassKeyTrace.i("Autofill", "onConnected entries=${PasswordRepository.snapshot().size} SDK=${Build.VERSION.SDK_INT}")
+        VaultTrace.i("Autofill", "onConnected entries=${PasswordRepository.snapshot().size} SDK=${Build.VERSION.SDK_INT}")
     }
 
     override fun onDisconnected() {
         super.onDisconnected()
         Log.d(TAG, "onDisconnected — autofill service unbound (normal lifecycle)")
-        PassKeyTrace.d("Autofill", "onDisconnected — normal lifecycle unbind")
+        VaultTrace.d("Autofill", "onDisconnected — normal lifecycle unbind")
     }
 
     override fun onFillRequest(
@@ -85,12 +85,12 @@ class PassKeyAutofillService : AutofillService() {
         val contexts = request.fillContexts
         Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         Log.i(TAG, " onFillRequest  contexts=${contexts.size}  flags=${request.flags}")
-        PassKeyTrace.i("Autofill", "onFillRequest contexts=${contexts.size} flags=${request.flags}")
+        VaultTrace.i("Autofill", "onFillRequest contexts=${contexts.size} flags=${request.flags}")
 
         val structure = contexts.lastOrNull()?.structure
         if (structure == null) {
             Log.w(TAG, "❌ onFillRequest aborted: null AssistStructure")
-            PassKeyTrace.w("Autofill", "onFillRequest aborted — null AssistStructure")
+            VaultTrace.w("Autofill", "onFillRequest aborted — null AssistStructure")
             callback.onSuccess(null)
             return
         }
@@ -108,7 +108,7 @@ class PassKeyAutofillService : AutofillService() {
         if (parsed.passwordField != null) {
             Log.i(TAG, "  passwordField: tag=${parsed.passwordField.htmlTag} confidence=${parsed.passwordField.confidence}")
         }
-        PassKeyTrace.i(
+        VaultTrace.i(
             "Autofill",
             "onFillRequest pkg=${parsed.packageName} webDomain=${parsed.webDomain} origin=$requestedOrigin " +
                 "hasUser=${parsed.usernameField != null} hasPass=${parsed.passwordField != null}"
@@ -120,7 +120,7 @@ class PassKeyAutofillService : AutofillService() {
         // ── If no password field was found, we cannot fill or save ──────────
         if (passwordId == null) {
             Log.w(TAG, "⚠️ onFillRequest: no password field — returning null (page may still be loading)")
-            PassKeyTrace.w("Autofill", "onFillRequest no password field — returning null so browser retries")
+            VaultTrace.w("Autofill", "onFillRequest no password field — returning null so browser retries")
             callback.onSuccess(null)
             return
         }
@@ -134,7 +134,7 @@ class PassKeyAutofillService : AutofillService() {
         // ── Existing credentials ─────────────────────────────────────────────
         val matches = if (requestedOrigin.isNotBlank()) PasswordRepository.findMatches(requestedOrigin) else emptyList()
         Log.i(TAG, "  findMatches('$requestedOrigin') → ${matches.size} entries")
-        PassKeyTrace.i("Autofill", "onFillRequest matches=${matches.size} for origin='$requestedOrigin'")
+        VaultTrace.i("Autofill", "onFillRequest matches=${matches.size} for origin='$requestedOrigin'")
         matches.forEach { entry ->
             Log.d(TAG, "    ↳ dataset: ${entry.username} @ ${entry.siteName}")
             responseBuilder.addDataset(buildDataset(parsed, entry))
@@ -161,31 +161,31 @@ class PassKeyAutofillService : AutofillService() {
 
         // ── Android 13+ (Tiramisu): header — only when showing real matches ───
         // Skip the header for placeholder-only responses to avoid showing two
-        // "PassKey" entries (header + placeholder chip) to the user.
+        // "Vault" entries (header + placeholder chip) to the user.
         if (matches.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             responseBuilder.setHeader(
                 RemoteViews(packageName, R.layout.autofill_header).apply {
-                    setTextViewText(R.id.header_title, "Saved with PassKey")
+                    setTextViewText(R.id.header_title, "Saved with Vault")
                 }
             )
         }
 
         val totalDatasets = matches.size
         Log.i(TAG, "✅ onFillRequest → FillResponse  saveLabel='$originLabel'  datasets=$totalDatasets")
-        PassKeyTrace.i("Autofill", "onFillRequest returning FillResponse saveLabel='$originLabel' datasets=$totalDatasets")
+        VaultTrace.i("Autofill", "onFillRequest returning FillResponse saveLabel='$originLabel' datasets=$totalDatasets")
         callback.onSuccess(responseBuilder.build())
     }
 
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
         Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         Log.i(TAG, " onSaveRequest  contexts=${request.fillContexts.size}")
-        PassKeyTrace.i("Autofill", "onSaveRequest contexts=${request.fillContexts.size}")
+        VaultTrace.i("Autofill", "onSaveRequest contexts=${request.fillContexts.size}")
         try {
             PasswordRepository.init(this)
             val structure = request.fillContexts.lastOrNull()?.structure
             if (structure == null) {
                 Log.w(TAG, "❌ onSaveRequest aborted: null structure")
-                PassKeyTrace.w("Autofill", "onSaveRequest aborted — null structure")
+                VaultTrace.w("Autofill", "onSaveRequest aborted — null structure")
                 callback.onSuccess(); return
             }
 
@@ -196,16 +196,16 @@ class PassKeyAutofillService : AutofillService() {
 
             Log.i(TAG, "  origin=$origin  user='$username'  passLen=${password.length}")
             Log.i(TAG, "  usernameTag=${parsed.usernameField?.htmlTag}  passwordTag=${parsed.passwordField?.htmlTag}")
-            PassKeyTrace.i("Autofill", "onSaveRequest origin=$origin user='$username' passLen=${password.length}")
+            VaultTrace.i("Autofill", "onSaveRequest origin=$origin user='$username' passLen=${password.length}")
 
             if (username.isBlank() || password.isBlank()) {
                 Log.w(TAG, "❌ onSaveRequest skipped — blank credentials. user='$username' passLen=${password.length}")
-                PassKeyTrace.w("Autofill", "onSaveRequest skipped blank credentials user='$username' passLen=${password.length}")
+                VaultTrace.w("Autofill", "onSaveRequest skipped blank credentials user='$username' passLen=${password.length}")
                 callback.onSuccess(); return
             }
             if (origin.isBlank()) {
                 Log.w(TAG, "❌ onSaveRequest skipped — blank origin")
-                PassKeyTrace.w("Autofill", "onSaveRequest skipped blank origin")
+                VaultTrace.w("Autofill", "onSaveRequest skipped blank origin")
                 callback.onSuccess(); return
             }
 
@@ -214,7 +214,7 @@ class PassKeyAutofillService : AutofillService() {
             val isMasked = password.all { it in maskChars }
             if (isMasked) {
                 Log.w(TAG, "❌ REJECTED save — password is all mask chars (${password.length} chars)")
-                PassKeyTrace.w("Autofill", "REJECTED save — masked password detected")
+                VaultTrace.w("Autofill", "REJECTED save — masked password detected")
                 callback.onSuccess(); return
             }
 
@@ -230,7 +230,7 @@ class PassKeyAutofillService : AutofillService() {
             Log.i(TAG, "SAVE_DEBUG user=$username passwordLength=${password.length} origin=$origin")
             PasswordRepository.saveFromAutofill(entry)
             Log.i(TAG, "✅ PasswordRepository.save() — credential stored successfully")
-            PassKeyTrace.i("Autofill", "save SUCCESS origin=${entry.loginUrl} user=${entry.username}")
+            VaultTrace.i("Autofill", "save SUCCESS origin=${entry.loginUrl} user=${entry.username}")
 
             // Show toast on the main thread to confirm save to the user
             Handler(Looper.getMainLooper()).post {
@@ -242,7 +242,7 @@ class PassKeyAutofillService : AutofillService() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "onSaveRequest EXCEPTION", e)
-            PassKeyTrace.e("Autofill", "onSaveRequest EXCEPTION", e)
+            VaultTrace.e("Autofill", "onSaveRequest EXCEPTION", e)
         }
         callback.onSuccess()
     }
@@ -259,7 +259,7 @@ class PassKeyAutofillService : AutofillService() {
 
     /**
      * Builds a modern RemoteViews presentation for an autofill dataset entry
-     * showing the PassKey logo, title text and subtitle.
+     * showing the Vault logo, title text and subtitle.
      */
     private fun datasetView(title: String, subtitle: String): RemoteViews =
         RemoteViews(packageName, R.layout.autofill_dataset_item).apply {
@@ -280,7 +280,7 @@ data class ParsedLoginForm(
     val origin: String get() = normalizeCredentialOrigin(webDomain ?: packageName)
 
     companion object {
-        private const val TAG = "PassKeyAutofill"
+        private const val TAG = "VaultAutofill"
 
         fun from(structure: AssistStructure): ParsedLoginForm {
             var bestUsername: ParsedField? = null
@@ -324,7 +324,7 @@ data class ParsedLoginForm(
             // don't track typed text, and pointing SaveInfo at them means
             // onSaveRequest never fires (the framework never sees a value change).
             val isHtmlContainer = htmlTag.isNotBlank() &&
-                htmlTag !in PassKeyAutofillService.INPUT_HTML_TAGS
+                htmlTag !in VaultAutofillService.INPUT_HTML_TAGS
             val canBeField = !isHtmlContainer
 
             if (isHtmlContainer && (webDomain != null || htmlTag.isNotBlank())) {
@@ -377,7 +377,7 @@ data class ParsedLoginForm(
                             passwordField = ParsedField(id, node.currentValue(), conf, htmlTag)
                             Log.i(TAG, "  ✅ PASSWORD field  tag=$htmlTag  id=$idEntry  hint=$hintText  " +
                                 "value=[${node.currentValue()?.length ?: 0} chars]  confidence=$conf")
-                            PassKeyTrace.i("Autofill", "PASSWORD field found tag=$htmlTag id=$idEntry hint=$hintText webDomain=$webDomain conf=$conf")
+                            VaultTrace.i("Autofill", "PASSWORD field found tag=$htmlTag id=$idEntry hint=$hintText webDomain=$webDomain conf=$conf")
                         }
                         isUsername -> {
                             // <input type=text> or <input type=email> gets higher confidence
@@ -387,7 +387,7 @@ data class ParsedLoginForm(
                             usernameField = ParsedField(id, node.currentValue(), conf, htmlTag)
                             Log.i(TAG, "  ✅ USERNAME field  tag=$htmlTag  id=$idEntry  hint=$hintText  " +
                                 "value='${node.currentValue()}'  confidence=$conf")
-                            PassKeyTrace.i("Autofill", "USERNAME field found tag=$htmlTag id=$idEntry hint=$hintText value='${node.currentValue()}' conf=$conf")
+                            VaultTrace.i("Autofill", "USERNAME field found tag=$htmlTag id=$idEntry hint=$hintText value='${node.currentValue()}' conf=$conf")
                         }
                     }
                 }

@@ -50,7 +50,7 @@ import androidx.lifecycle.LifecycleEventObserver
 /**
  * Optional accessibility banner. Accessibility is NOT required for credential saving.
  * It is only used for overlay UI and manual fill-assist from the vault screen.
- * All credential saving goes through [PassKeyAutofillService.onSaveRequest].
+ * All credential saving goes through [VaultAutofillService.onSaveRequest].
  */
 @Composable
 fun AccessibilityPermissionBanner() {
@@ -68,7 +68,7 @@ fun AutofillPermissionBannerWithLifecycle() {
     var autofillEnabled by remember { mutableStateOf(isAutofillServiceEnabled(context)) }
     var credBannerDismissed by remember {
         mutableStateOf(
-            context.getSharedPreferences("passkey_prefs", Context.MODE_PRIVATE)
+            context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE)
                 .getBoolean("cred_banner_dismissed", false)
         )
     }
@@ -106,9 +106,9 @@ fun AutofillPermissionBannerWithLifecycle() {
             Spacer(Modifier.width(8.dp))
             Text(
                 text = if (autofillEnabled)
-                    "✅ Autofill active — PassKey saves & fills passwords via Android Autofill Framework"
+                    "✅ Autofill active — Vault saves & fills passwords via Android Autofill Framework"
                 else
-                    "⚠️ Tap to set PassKey as the autofill provider (required for save & fill)",
+                    "⚠️ Tap to set Vault as the autofill provider (required for save & fill)",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
                 color = if (autofillEnabled) Color(0xFF064E3B) else Color(0xFF7F1D1D),
@@ -149,7 +149,7 @@ fun AutofillPermissionBannerWithLifecycle() {
                         androidx.compose.material3.TextButton(
                             onClick = {
                                 credBannerDismissed = true
-                                context.getSharedPreferences("passkey_prefs", Context.MODE_PRIVATE)
+                                context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE)
                                     .edit().putBoolean("cred_banner_dismissed", true).apply()
                             },
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
@@ -157,7 +157,7 @@ fun AutofillPermissionBannerWithLifecycle() {
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Let PassKey appear as a password provider in Android's fill surfaces. Saving happens only through the system Autofill Framework prompt.",
+                        "Let Vault appear as a password provider in Android's fill surfaces. Saving happens only through the system Autofill Framework prompt.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF1E40AF),
                         lineHeight = 18.sp,
@@ -185,7 +185,7 @@ fun isAccessibilityServiceEnabled(context: Context): Boolean {
     return am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
         .any {
             it.resolveInfo.serviceInfo.packageName == context.packageName &&
-                it.resolveInfo.serviceInfo.name.contains("PassKeyAccessibilityService")
+                it.resolveInfo.serviceInfo.name.contains("VaultAccessibilityService")
         }
 }
 
@@ -193,7 +193,7 @@ fun isOverlayPermissionGranted(context: Context): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(context) else true
 
 fun openAccessibilityServiceDirectly(context: Context) {
-    val componentName = "${context.packageName}/.PassKeyAccessibilityService"
+    val componentName = "${context.packageName}/.VaultAccessibilityService"
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         try {
             val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
@@ -235,7 +235,7 @@ fun isAutofillServiceEnabled(context: Context): Boolean {
         val current = Settings.Secure.getString(context.contentResolver, "autofill_service") ?: ""
         // Different Android versions format the autofill_service string differently
         // Some use "pkg/pkg.ServiceName", others use "pkg/.ServiceName", etc.
-        current.contains(context.packageName) && current.contains("PassKeyAutofillService")
+        current.contains(context.packageName) && current.contains("VaultAutofillService")
     } else false
 }
 

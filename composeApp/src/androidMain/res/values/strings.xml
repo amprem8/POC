@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">PassKey</string>
-    <string name="accessibility_service_description">PassKey detects login forms and can suggest autofill without storing credentials outside the system save prompt.</string>
+    <string name="app_name">Vault</string>
+    <string name="accessibility_service_description">Vault detects login forms and can suggest autofill without storing credentials outside the system save prompt.</string>
 </resources>

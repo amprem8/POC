@@ -14,9 +14,9 @@
         android:id="@+id/autofill_icon"
         android:layout_width="28dp"
         android:layout_height="28dp"
-        android:src="@drawable/passkey_logo"
+        android:src="@drawable/vault_logo"
         android:scaleType="centerCrop"
-        android:contentDescription="PassKey" />
+        android:contentDescription="Vault" />
 
     <LinearLayout
         android:layout_width="0dp"

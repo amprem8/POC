@@ -10,7 +10,7 @@ import androidx.fragment.app.FragmentActivity
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        PassKeyTrace.i(
+        VaultTrace.i(
             "MainActivity",
             "onCreate savedState=${savedInstanceState != null} extras=${intent?.extras?.keySet()?.joinToString()}"
         )

@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun EnableBiometricScreen(
-    message: PassKeyMessage?,
+    message: VaultMessage?,
     onEnableBiometric: () -> Unit,
 ) {
     LaunchedEffect(Unit) {

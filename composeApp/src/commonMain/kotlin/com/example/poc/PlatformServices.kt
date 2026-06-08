@@ -11,8 +11,8 @@ interface PlatformServices {
     /** Reactive stream of all saved password entries — UI collects this for instant updates. */
     val entriesFlow: StateFlow<List<PasswordEntry>>
 
-    fun loadPassKeyConfig(): PassKeyConfig?
-    fun savePassKeyConfig(config: PassKeyConfig)
+    fun loadVaultConfig(): VaultConfig?
+    fun saveVaultConfig(config: VaultConfig)
     suspend fun promptBiometric(promptTitle: String, promptSubtitle: String): Boolean
     fun copyToClipboard(label: String, value: String)
     fun saveRecoveryTextFile(fileName: String, content: String): String
@@ -23,15 +23,15 @@ interface PlatformServices {
 }
 
 class PreviewPlatformServices : PlatformServices {
-    private var config: PassKeyConfig? = null
+    private var config: VaultConfig? = null
     private val _entries = MutableStateFlow<List<PasswordEntry>>(emptyList())
 
     override val serverBaseUrl: String = "http://localhost:$SERVER_PORT"
     override val biometricAvailable: Boolean = true
     override val entriesFlow: StateFlow<List<PasswordEntry>> = _entries.asStateFlow()
 
-    override fun loadPassKeyConfig(): PassKeyConfig? = config
-    override fun savePassKeyConfig(config: PassKeyConfig) { this.config = config }
+    override fun loadVaultConfig(): VaultConfig? = config
+    override fun saveVaultConfig(config: VaultConfig) { this.config = config }
     override suspend fun promptBiometric(promptTitle: String, promptSubtitle: String): Boolean = true
     override fun copyToClipboard(label: String, value: String) = Unit
     override fun saveRecoveryTextFile(fileName: String, content: String): String = "Preview saved: $fileName"

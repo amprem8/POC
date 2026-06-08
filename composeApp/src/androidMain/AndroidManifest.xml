@@ -10,7 +10,7 @@
 
 
     <application
-        android:name=".PassKeyApplication"
+        android:name=".VaultApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
@@ -59,7 +59,7 @@
 
         <!-- Autofill Service — fills username/password in ALL browsers & apps -->
         <service
-            android:name=".PassKeyAutofillService"
+            android:name=".VaultAutofillService"
             android:exported="true"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_AUTOFILL_SERVICE"
@@ -74,7 +74,7 @@
 
         <!-- Credential Provider Service (Android 14+ Credential Manager API) -->
         <service
-            android:name=".PassKeyCredentialProviderService"
+            android:name=".VaultCredentialProviderService"
             android:exported="true"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE"
@@ -89,9 +89,9 @@
 
         <!-- Accessibility Service: overlay UI and fill-assist only (no credential saving) -->
         <service
-            android:name=".PassKeyAccessibilityService"
+            android:name=".VaultAccessibilityService"
             android:exported="true"
-            android:label="PassKey — Fill Assist"
+            android:label="Vault — Fill Assist"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

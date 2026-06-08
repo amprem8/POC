@@ -20,17 +20,17 @@ import kotlinx.coroutines.launch
 @Composable
 @Preview
 fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
-    PassKeyTheme {
+    VaultTheme {
         var showSplash by rememberSaveable { mutableStateOf(true) }
         val controller = remember { VaultAppController() }
-        var uiState by remember { mutableStateOf(PassKeyUiState()) }
+        var uiState by remember { mutableStateOf(VaultUiState()) }
         val scope = rememberCoroutineScope()
 
         LaunchedEffect(Unit) {
             delay(1100)
             showSplash = false
             uiState = controller.bootstrap(
-                savedConfig = platformServices.loadPassKeyConfig(),
+                savedConfig = platformServices.loadVaultConfig(),
                 biometricAvailable = platformServices.biometricAvailable,
             )
         }
@@ -39,10 +39,10 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
-            AnimatedContent(targetState = if (showSplash) PassKeyRoute.Splash else uiState.route, label = "passkey-root") { route ->
+            AnimatedContent(targetState = if (showSplash) VaultRoute.Splash else uiState.route, label = "vault-root") { route ->
                 when (route) {
-                    PassKeyRoute.Splash -> OpeningSplashScreen()
-                    PassKeyRoute.CreateMasterPassword -> CreateMasterPasswordScreen(
+                    VaultRoute.Splash -> OpeningSplashScreen()
+                    VaultRoute.CreateMasterPassword -> CreateMasterPasswordScreen(
                         message = uiState.message,
                         onContinue = { password, confirmPassword ->
                             applyActionResult(
@@ -52,13 +52,13 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                         },
                     )
 
-                    PassKeyRoute.EnableBiometric -> EnableBiometricScreen(
+                    VaultRoute.EnableBiometric -> EnableBiometricScreen(
                         message = uiState.message,
                         onEnableBiometric = {
                             scope.launch {
                                 val success = platformServices.promptBiometric(
                                     promptTitle = "Enable Touch ID",
-                                    promptSubtitle = "Use biometric unlock for faster access to PassKey",
+                                    promptSubtitle = "Use biometric unlock for faster access to Vault",
                                 )
                                 if (success) {
                                     applyActionResult(
@@ -67,28 +67,28 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                                     ) { uiState = it }
                                 } else {
                                     uiState = uiState.copy(
-                                        route = PassKeyRoute.EnableBiometric,
+                                        route = VaultRoute.EnableBiometric,
                                         biometricRequired = true,
-                                        message = PassKeyMessage("Fingerprint verification was cancelled. Complete it to finish first-time setup.", isError = true),
+                                        message = VaultMessage("Fingerprint verification was cancelled. Complete it to finish first-time setup.", isError = true),
                                     )
                                 }
                             }
                         },
                     )
 
-                    PassKeyRoute.RecoveryPhrase -> RecoveryPhraseScreen(
+                    VaultRoute.RecoveryPhrase -> RecoveryPhraseScreen(
                         recoveryPhrase = uiState.recoveryPhrase,
                         message = uiState.message,
                         onCopy = {
                             platformServices.copyToClipboard("$AppName Recovery", uiState.recoveryPhrase)
-                            uiState = uiState.copy(message = PassKeyMessage("Recovery phrase copied."))
+                            uiState = uiState.copy(message = VaultMessage("Recovery phrase copied."))
                         },
                         onDownload = {
                             val location = platformServices.saveRecoveryTextFile(
                                 fileName = "$AppName Recovery.txt",
                                 content = controller.recoveryFileContent(AppName),
                             )
-                            uiState = uiState.copy(message = PassKeyMessage(location))
+                            uiState = uiState.copy(message = VaultMessage(location))
                         },
                         onContinue = {
                             applyActionResult(
@@ -98,7 +98,7 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                         },
                     )
 
-                    PassKeyRoute.Login -> LoginScreen(
+                    VaultRoute.Login -> LoginScreen(
                         biometricEnabled = uiState.biometricEnabled,
                         message = uiState.message,
                         onBiometricLogin = {
@@ -114,7 +114,7 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
 
                             val result = controller.unlockWithPassword(password)
 
-                            if (result.uiState.route == PassKeyRoute.Main) {
+                            if (result.uiState.route == VaultRoute.Main) {
                                 platformServices.enableOverlayMonitoringAfterLogin()
                             }
 
@@ -128,13 +128,13 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                         onForgotPassword = { uiState = controller.openForgotPassword() },
                     )
 
-                    PassKeyRoute.ForgotPassword -> ForgotPasswordScreen(
+                    VaultRoute.ForgotPassword -> ForgotPasswordScreen(
                         message = uiState.message,
                         onVerify = { phrase -> uiState = controller.verifyRecoveryPhrase(phrase) },
                         onBackToLogin = { uiState = controller.cancelForgotPassword() },
                     )
 
-                    PassKeyRoute.ResetPassword -> CreateMasterPasswordScreen(
+                    VaultRoute.ResetPassword -> CreateMasterPasswordScreen(
                         message = uiState.message,
                         title = "Reset master password",
                         subtitle = "Your recovery phrase was verified. Set a new master password for this install.",
@@ -149,16 +149,16 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                         },
                     )
 
-                    PassKeyRoute.Main -> BlankAuthenticatedScreen(platformServices = platformServices)
+                    VaultRoute.Main -> BlankAuthenticatedScreen(platformServices = platformServices)
 
-                    PassKeyRoute.Onboarding -> PlatformOnboardingScreen(
+                    VaultRoute.Onboarding -> PlatformOnboardingScreen(
                         onFinish = {
                             // Mark onboarding seen, persist, then go to Main vault
-                            val cfg = platformServices.loadPassKeyConfig()
+                            val cfg = platformServices.loadVaultConfig()
                             if (cfg != null) {
-                                platformServices.savePassKeyConfig(cfg.copy(onboardingSeen = true))
+                                platformServices.saveVaultConfig(cfg.copy(onboardingSeen = true))
                             }
-                            uiState = uiState.copy(route = PassKeyRoute.Main)
+                            uiState = uiState.copy(route = VaultRoute.Main)
                         }
                     )
                 }
@@ -168,29 +168,29 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
 }
 
 private fun applyActionResult(
-    result: PassKeyActionResult,
+    result: VaultActionResult,
     platformServices: PlatformServices,
-    onUiState: (PassKeyUiState) -> Unit,
+    onUiState: (VaultUiState) -> Unit,
 ) {
-    result.persistedConfig?.let(platformServices::savePassKeyConfig)
+    result.persistedConfig?.let(platformServices::saveVaultConfig)
     onUiState(result.uiState)
 }
 
 private suspend fun runBiometricUnlock(
     platformServices: PlatformServices,
     controller: VaultAppController,
-    onUiState: (PassKeyUiState) -> Unit,
+    onUiState: (VaultUiState) -> Unit,
 ) {
     val success = platformServices.promptBiometric(
         promptTitle = "Unlock with Touch ID",
-        promptSubtitle = "Authenticate to open PassKey",
+        promptSubtitle = "Authenticate to open Vault",
     )
 
     if (success) {
 
         val result = controller.unlockWithBiometric()
 
-        if (result.uiState.route == PassKeyRoute.Main) {
+        if (result.uiState.route == VaultRoute.Main) {
             platformServices.enableOverlayMonitoringAfterLogin()
         }
 
@@ -201,11 +201,11 @@ private suspend fun runBiometricUnlock(
         )
     } else {
         onUiState(
-            PassKeyUiState(
-                route = PassKeyRoute.Login,
+            VaultUiState(
+                route = VaultRoute.Login,
                 biometricAvailable = platformServices.biometricAvailable,
-                biometricEnabled = platformServices.loadPassKeyConfig()?.biometricEnabled == true,
-                message = PassKeyMessage("Biometric authentication was cancelled.", isError = true),
+                biometricEnabled = platformServices.loadVaultConfig()?.biometricEnabled == true,
+                message = VaultMessage("Biometric authentication was cancelled.", isError = true),
             ),
         )
     }

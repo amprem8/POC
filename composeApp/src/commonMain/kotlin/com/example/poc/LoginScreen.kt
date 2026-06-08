@@ -51,14 +51,14 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun LoginScreen(
     biometricEnabled: Boolean,
-    message: PassKeyMessage?,
+    message: VaultMessage?,
     onBiometricLogin: () -> Unit,
     onPasswordLogin: (String) -> Unit,
     onForgotPassword: () -> Unit,
 ) {
     var showPassword by rememberSaveable { mutableStateOf(false) }
     var password by rememberSaveable { mutableStateOf("") }
-    val inputController = rememberPassKeyInputController()
+    val inputController = rememberVaultInputController()
 
     Box(
         modifier = Modifier
@@ -85,7 +85,7 @@ fun LoginScreen(
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 30.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                PassKeyLogo(size = 72.dp, cornerRadius = 20.dp)
+                VaultLogo(size = 72.dp, cornerRadius = 20.dp)
 
                 Spacer(modifier = Modifier.height(18.dp))
 

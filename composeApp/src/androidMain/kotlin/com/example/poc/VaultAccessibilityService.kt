@@ -10,7 +10,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 
 /**
- * PassKey Accessibility Service — NON-credential responsibilities only.
+ * Vault Accessibility Service — NON-credential responsibilities only.
  *
  * This service is ONLY used for:
  *  • Overlay UI (floating button)
@@ -24,14 +24,14 @@ import android.view.accessibility.AccessibilityWindowInfo
  *  • Participate in credential persistence or matching
  *
  * ALL credential saving is handled exclusively by:
- *  • [PassKeyAutofillService.onSaveRequest] (Android Autofill Framework)
+ *  • [VaultAutofillService.onSaveRequest] (Android Autofill Framework)
  *  • [CredentialSaveActivity] (Credential Manager on Android 14+)
  */
 @SuppressLint("AccessibilityPolicy")
-class PassKeyAccessibilityService : AccessibilityService() {
+class VaultAccessibilityService : AccessibilityService() {
 
     companion object {
-        private const val TAG = "PassKeyA11y"
+        private const val TAG = "VaultA11y"
 
         val BROWSER_PACKAGES = setOf(
             "com.android.chrome",
@@ -44,7 +44,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
 
         /** Singleton reference so the vault screen can ask us to fill. */
         @Volatile
-        private var instance: PassKeyAccessibilityService? = null
+        private var instance: VaultAccessibilityService? = null
 
         /**
          * Fill the currently-visible login form with [entry]'s credentials.
@@ -64,7 +64,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         Log.i(TAG, "✅ Accessibility service connected — overlay/fill-assist only (no credential saving)")
-        PassKeyTrace.i("A11y", "onServiceConnected — overlay/fill mode only")
+        VaultTrace.i("A11y", "onServiceConnected — overlay/fill mode only")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -93,7 +93,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
      */
     private fun doFill(entry: PasswordEntry): Boolean {
         Log.i(TAG, "🖊️ doFill site=${entry.siteName} user=${entry.username}")
-        PassKeyTrace.i("A11y", "doFill site=${entry.siteName} user=${entry.username}")
+        VaultTrace.i("A11y", "doFill site=${entry.siteName} user=${entry.username}")
 
         val allWindows: List<AccessibilityWindowInfo> = windows ?: emptyList()
         val browserRoot: AccessibilityNodeInfo? = allWindows
@@ -104,7 +104,7 @@ class PassKeyAccessibilityService : AccessibilityService() {
             Log.w(TAG, "doFill: no browser window found among ${allWindows.size} windows — falling back to rootInActiveWindow")
             val fallbackRoot = rootInActiveWindow ?: run {
                 Log.e(TAG, "doFill: rootInActiveWindow=null — cannot fill")
-                PassKeyTrace.e("A11y", "doFill FAILED — rootInActiveWindow=null")
+                VaultTrace.e("A11y", "doFill FAILED — rootInActiveWindow=null")
                 return false
             }
             return fillFromRoot(fallbackRoot, entry)

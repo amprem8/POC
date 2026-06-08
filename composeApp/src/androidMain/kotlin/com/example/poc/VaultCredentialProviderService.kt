@@ -23,23 +23,23 @@ import android.content.Intent
 import java.time.Instant
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-class PassKeyCredentialProviderService : CredentialProviderService() {
+class VaultCredentialProviderService : CredentialProviderService() {
 
     companion object {
-        private const val TAG = "PassKeyCredProv"
+        private const val TAG = "VaultCredProv"
     }
 
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "✅ CredentialProviderService.onCreate — service created SDK=${Build.VERSION.SDK_INT}")
-        PassKeyTrace.i("CredProvider", "onCreate — service created SDK=${Build.VERSION.SDK_INT}")
+        VaultTrace.i("CredProvider", "onCreate — service created SDK=${Build.VERSION.SDK_INT}")
         PasswordRepository.init(this)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy — credential provider service destroyed")
-        PassKeyTrace.d("CredProvider", "onDestroy")
+        VaultTrace.d("CredProvider", "onDestroy")
     }
 
     override fun onBeginGetCredentialRequest(
@@ -49,12 +49,12 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
     ) {
         Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         Log.i(TAG, " onBeginGetCredentialRequest  options=${request.beginGetCredentialOptions.size}")
-        PassKeyTrace.i("CredProvider", "onBeginGetCredentialRequest options=${request.beginGetCredentialOptions.size}")
+        VaultTrace.i("CredProvider", "onBeginGetCredentialRequest options=${request.beginGetCredentialOptions.size}")
         try {
             PasswordRepository.init(this)
             val entries = PasswordRepository.snapshot()
             Log.i(TAG, "  stored entries=${entries.size}  ids=${entries.joinToString { it.id }}")
-            PassKeyTrace.i("CredProvider", "beginGet entries=${entries.size} ids=${entries.joinToString { it.id }}")
+            VaultTrace.i("CredProvider", "beginGet entries=${entries.size} ids=${entries.joinToString { it.id }}")
 
             val credentialEntries = mutableListOf<PasswordCredentialEntry>()
 
@@ -68,7 +68,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
                     ?.let { normalizeCredentialOrigin(it) }
                 ?: ""
             Log.d(TAG, "  callingOrigin=$callingOrigin")
-            PassKeyTrace.d("CredProvider", "beginGet callingOrigin=$callingOrigin")
+            VaultTrace.d("CredProvider", "beginGet callingOrigin=$callingOrigin")
 
             for ((optIdx, option) in request.beginGetCredentialOptions.withIndex()) {
                 Log.d(TAG, "  option[$optIdx] class=${option::class.java.simpleName}")
@@ -79,7 +79,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
                         entries.filter { originsMatch(it.loginUrl, callingOrigin) }
                     else entries
                     Log.i(TAG, "    origin='$callingOrigin' → ${matchingEntries.size}/${entries.size} matching entries")
-                    PassKeyTrace.i("CredProvider", "beginGet origin='$callingOrigin' matches=${matchingEntries.size} total=${entries.size}")
+                    VaultTrace.i("CredProvider", "beginGet origin='$callingOrigin' matches=${matchingEntries.size} total=${entries.size}")
                     matchingEntries.forEach { entry ->
                         Log.d(TAG, "      building PasswordCredentialEntry for ${entry.username} @ ${entry.siteName}")
                         val fillIntent = Intent(this, CredentialFillActivity::class.java).apply {
@@ -107,7 +107,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
             }
 
             Log.i(TAG, "✅ onBeginGetCredentialRequest returning ${credentialEntries.size} entries")
-            PassKeyTrace.i("CredProvider", "beginGet returning credentialEntries=${credentialEntries.size}")
+            VaultTrace.i("CredProvider", "beginGet returning credentialEntries=${credentialEntries.size}")
             callback.onResult(
                 BeginGetCredentialResponse.Builder()
                     .setCredentialEntries(credentialEntries)
@@ -115,7 +115,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "onBeginGetCredentialRequest EXCEPTION", e)
-            PassKeyTrace.e("CredProvider", "beginGet EXCEPTION", e)
+            VaultTrace.e("CredProvider", "beginGet EXCEPTION", e)
             callback.onError(GetCredentialUnknownException(e.message))
         }
     }
@@ -129,17 +129,17 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
     ) {
         Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         Log.i(TAG, " onBeginCreateCredentialRequest  type='${request.type}'")
-        PassKeyTrace.i("CredProvider", "onBeginCreateCredentialRequest type='${request.type}'")
+        VaultTrace.i("CredProvider", "onBeginCreateCredentialRequest type='${request.type}'")
         try {
             if (!request.type.contains("password", ignoreCase = true)) {
                 Log.w(TAG, "⚠️ beginCreate ignored — type='${request.type}' (not a password request)")
-                PassKeyTrace.w("CredProvider", "beginCreate ignored type='${request.type}' — not a password type")
+                VaultTrace.w("CredProvider", "beginCreate ignored type='${request.type}' — not a password type")
                 callback.onResult(BeginCreateCredentialResponse.Builder().build())
                 return
             }
 
-            Log.i(TAG, "  type='${request.type}' — offering PassKey save entry")
-            PassKeyTrace.i("CredProvider", "beginCreate OFFERING save entry for type='${request.type}'")
+            Log.i(TAG, "  type='${request.type}' — offering Vault save entry")
+            VaultTrace.i("CredProvider", "beginCreate OFFERING save entry for type='${request.type}'")
 
             val saveIntent = Intent(this, CredentialSaveActivity::class.java)
             val pendingIntent = PendingIntent.getActivity(
@@ -152,7 +152,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
             ).build()
 
             Log.i(TAG, "✅ onBeginCreateCredentialRequest → returning CreateEntry '${getString(R.string.app_name)}'")
-            PassKeyTrace.i("CredProvider", "beginCreate returning CreateEntry account='${getString(R.string.app_name)}'")
+            VaultTrace.i("CredProvider", "beginCreate returning CreateEntry account='${getString(R.string.app_name)}'")
             callback.onResult(
                 BeginCreateCredentialResponse.Builder()
                     .addCreateEntry(createEntry)
@@ -160,7 +160,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "onBeginCreateCredentialRequest EXCEPTION", e)
-            PassKeyTrace.e("CredProvider", "beginCreate EXCEPTION", e)
+            VaultTrace.e("CredProvider", "beginCreate EXCEPTION", e)
             callback.onError(CreateCredentialUnknownException(e.message))
         }
     }
@@ -173,7 +173,7 @@ class PassKeyCredentialProviderService : CredentialProviderService() {
         callback: OutcomeReceiver<Void?, ClearCredentialException>,
     ) {
         Log.i(TAG, "onClearCredentialStateRequest")
-        PassKeyTrace.i("CredProvider", "clearCredentialState requested")
+        VaultTrace.i("CredProvider", "clearCredentialState requested")
         callback.onResult(null)
     }
 }

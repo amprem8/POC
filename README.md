@@ -35,12 +35,12 @@ in your IDE’s toolbar or build it directly from the terminal:
 
 The Android app is wired to behave like a system-managed password manager:
 
-- `PassKeyAutofillService` parses `AssistStructure` in `onFillRequest` to detect username/password fields across apps and browsers.
+- `VaultAutofillService` parses `AssistStructure` in `onFillRequest` to detect username/password fields across apps and browsers.
 - Saved credentials are matched by normalized domain or exact package name.
-- Credentials are persisted **only** inside `PassKeyAutofillService.onSaveRequest`.
+- Credentials are persisted **only** inside `VaultAutofillService.onSaveRequest`.
 - Password storage uses encrypted Android preferences backed by Jetpack Security Crypto and is exposed to the UI via `PasswordRepository.entries` (`StateFlow`).
-- `PassKeyAccessibilityService` is detection-only and can show non-blocking fill suggestions, but it does not save or approve credentials.
-- Android 14+ `PassKeyCredentialProviderService` remains fill-only; it does not create a second save flow.
+- `VaultAccessibilityService` is detection-only and can show non-blocking fill suggestions, but it does not save or approve credentials.
+- Android 14+ `VaultCredentialProviderService` remains fill-only; it does not create a second save flow.
 
 Verified commands:
 

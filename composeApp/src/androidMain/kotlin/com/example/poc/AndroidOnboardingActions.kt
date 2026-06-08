@@ -22,7 +22,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  * Maps each step index to the correct Android Settings deep-link:
  *  0 → Autofill provider picker (ACTION_REQUEST_SET_AUTOFILL_SERVICE)
  *  1 → Credential Provider settings (android.settings.CREDENTIAL_PROVIDER / Android 14+)
- *  2 → Accessibility settings (direct deep-link to PassKeyAccessibilityService on Android 13+)
+ *  2 → Accessibility settings (direct deep-link to VaultAccessibilityService on Android 13+)
  */
 fun handleOnboardingStepAction(context: Context, stepIndex: Int) {
     when (stepIndex) {

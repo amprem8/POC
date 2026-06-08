@@ -18,7 +18,7 @@ import androidx.fragment.app.FragmentActivity
  * Transparent trampoline activity that shows biometric prompt before
  * returning an autofill Dataset to the requesting app.
  *
- * Launched by [PassKeyAutofillService] when biometric confirmation is needed.
+ * Launched by [VaultAutofillService] when biometric confirmation is needed.
  */
 @RequiresApi(Build.VERSION_CODES.O)
 class AutofillAuthActivity : FragmentActivity() {

@@ -41,9 +41,9 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun CreateMasterPasswordScreen(
-    message: PassKeyMessage?,
+    message: VaultMessage?,
     title: String = "Create master password",
-    subtitle: String = "Set the password you will use to unlock PassKey on this install. If fingerprint is available, you must verify it next.",
+    subtitle: String = "Set the password you will use to unlock Vault on this install. If fingerprint is available, you must verify it next.",
     helperText: String = "Use at least 8 characters. This password stays on-device for this proof of concept.",
     primaryButtonText: String = "Continue",
     footerText: String? = "Fingerprint verification is required during first-time setup when it is available on this device.",
@@ -53,7 +53,7 @@ fun CreateMasterPasswordScreen(
     var confirmPassword by rememberSaveable { mutableStateOf("") }
     var showPassword by rememberSaveable { mutableStateOf(false) }
     var showConfirmPassword by rememberSaveable { mutableStateOf(false) }
-    val inputController = rememberPassKeyInputController()
+    val inputController = rememberVaultInputController()
     val confirmPasswordFocusRequester = remember { FocusRequester() }
 
     AuthScreenLayout(

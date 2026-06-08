@@ -15,7 +15,7 @@ import org.json.JSONObject
  * Singleton password repository that:
  *  - Persists all entries to encrypted shared preferences
  *  - Exposes a [StateFlow] of [PasswordEntry] so all Compose screens react instantly
- *  - Accepts persistence only from [PassKeyAutofillService.onSaveRequest]
+ *  - Accepts persistence only from [VaultAutofillService.onSaveRequest]
  *
  * Thread-safety: all mutations are @Synchronized. StateFlow updates are dispatched on the
  * thread that calls save/delete — callers on background threads must collect on Main.
@@ -26,9 +26,9 @@ object PasswordRepository {
         mutableListOf<() -> Unit>()
 
     private const val TAG = "PasswordRepository"
-    const val PREFS_NAME = "passkey_prefs"
+    const val PREFS_NAME = "vault_prefs"
     const val KEY_ENTRIES = "password_entries"
-    private const val SECURE_PREFS_NAME = "passkey_secure_prefs"
+    private const val SECURE_PREFS_NAME = "vault_secure_prefs"
 
     private val _entries = MutableStateFlow<List<PasswordEntry>>(emptyList())
 
@@ -42,7 +42,7 @@ object PasswordRepository {
     /** Must be called once on app start (Application.onCreate or first service connect). */
     fun init(context: Context) {
         if (prefs != null) {
-            PassKeyTrace.d(TAG, "init skipped prefsAlreadyInitialized entries=${_entries.value.size}")
+            VaultTrace.d(TAG, "init skipped prefsAlreadyInitialized entries=${_entries.value.size}")
             return
         }
         val appContext = context.applicationContext
@@ -59,7 +59,7 @@ object PasswordRepository {
         migrateLegacyPrefsIfNeeded(appContext)
         _entries.value = loadFromPrefs()
         Log.d(TAG, "Initialised encrypted storage — ${_entries.value.size} entries loaded")
-        PassKeyTrace.i(TAG, "init completed entries=${_entries.value.size}")
+        VaultTrace.i(TAG, "init completed entries=${_entries.value.size}")
     }
 
     /** Returns the current snapshot without requiring Flow collection. */
@@ -87,7 +87,7 @@ object PasswordRepository {
     /** Upsert: replaces existing entry with same normalized origin+username, or appends new one. */
     @Synchronized
     fun saveFromAutofill(entry: PasswordEntry) {
-        PassKeyTrace.i(TAG, "save start id=${entry.id} domain=${entry.loginUrl} user=${entry.username}")
+        VaultTrace.i(TAG, "save start id=${entry.id} domain=${entry.loginUrl} user=${entry.username}")
         val current = _entries.value.toMutableList()
         current.removeAll {
             originsMatch(it.loginUrl, entry.loginUrl) && it.username.equals(entry.username, ignoreCase = true)
@@ -95,7 +95,7 @@ object PasswordRepository {
         current.add(entry)
         persistAndEmit(current)
         Log.d(TAG, "Saved: ${entry.siteName} / ${entry.username}")
-        PassKeyTrace.i(TAG, "save done total=${_entries.value.size}")
+        VaultTrace.i(TAG, "save done total=${_entries.value.size}")
         notifyListeners()
     }
 
@@ -121,10 +121,10 @@ object PasswordRepository {
     /** Force-reload from disk (e.g. after another process writes via a Service). */
     @Synchronized
     fun refresh() {
-        PassKeyTrace.d(TAG, "refresh start")
+        VaultTrace.d(TAG, "refresh start")
         _entries.value = loadFromPrefs()
         Log.d(TAG, "Refreshed — ${_entries.value.size} entries loaded from SharedPreferences")
-        PassKeyTrace.d(TAG, "refresh done entries=${_entries.value.size}")
+        VaultTrace.d(TAG, "refresh done entries=${_entries.value.size}")
         notifyListeners()
     }
 
@@ -134,12 +134,12 @@ object PasswordRepository {
         prefs?.edit()?.putString(KEY_ENTRIES, serialize(list))?.commit()
         _entries.value = list
         Log.d(TAG, "Persisted ${list.size} encrypted entries")
-        PassKeyTrace.d(TAG, "persistAndEmit entries=${list.size} domains=${list.joinToString { it.loginUrl }}")
+        VaultTrace.d(TAG, "persistAndEmit entries=${list.size} domains=${list.joinToString { it.loginUrl }}")
     }
 
     fun loadFromPrefs(): List<PasswordEntry> {
         val json = prefs?.getString(KEY_ENTRIES, null) ?: return emptyList()
-        PassKeyTrace.d(TAG, "loadFromPrefs jsonLength=${json.length}")
+        VaultTrace.d(TAG, "loadFromPrefs jsonLength=${json.length}")
         return try {
             val array = JSONArray(json)
             val entries = (0 until array.length()).map { i ->
@@ -154,11 +154,11 @@ object PasswordRepository {
                     notes = o.optString("notes", ""),
                 )
             }
-            PassKeyTrace.d(TAG, "loadFromPrefs parsed=${entries.size}")
+            VaultTrace.d(TAG, "loadFromPrefs parsed=${entries.size}")
             entries
         } catch (e: Exception) {
             Log.e(TAG, "Deserialise failed", e)
-            PassKeyTrace.e(TAG, "loadFromPrefs deserialize failed", e)
+            VaultTrace.e(TAG, "loadFromPrefs deserialize failed", e)
             emptyList()
         }
     }
@@ -189,7 +189,7 @@ object PasswordRepository {
 
         encryptedPrefs.edit().putString(KEY_ENTRIES, legacyJson).commit()
         legacyPrefs.edit().remove(KEY_ENTRIES).apply()
-        PassKeyTrace.i(TAG, "migrated legacy password storage")
+        VaultTrace.i(TAG, "migrated legacy password storage")
     }
 }
 

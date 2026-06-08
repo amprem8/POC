@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun RecoveryPhraseScreen(
     recoveryPhrase: String,
-    message: PassKeyMessage?,
+    message: VaultMessage?,
     onCopy: () -> Unit,
     onDownload: () -> Unit,
     onContinue: () -> Unit,

@@ -32,14 +32,14 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun ResetMasterPasswordScreen(
-    message: PassKeyMessage?,
+    message: VaultMessage?,
     onSave: (password: String, confirmPassword: String) -> Unit,
 ) {
     var password by rememberSaveable { mutableStateOf("") }
     var confirmPassword by rememberSaveable { mutableStateOf("") }
     var showPassword by rememberSaveable { mutableStateOf(false) }
     var showConfirmPassword by rememberSaveable { mutableStateOf(false) }
-    val inputController = rememberPassKeyInputController()
+    val inputController = rememberVaultInputController()
     val confirmPasswordFocusRequester = remember { FocusRequester() }
 
     AuthScreenLayout(

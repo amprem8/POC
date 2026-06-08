@@ -23,25 +23,25 @@ class CredentialFillActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_ENTRY_ID = "entry_id"
-        private const val TAG = "PassKeyCredFill"
+        private const val TAG = "VaultCredFill"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         Log.i(TAG, "🚀 CredentialFillActivity.onCreate")
-        PassKeyTrace.i("CredFill", "onCreate launched")
+        VaultTrace.i("CredFill", "onCreate launched")
 
         PasswordRepository.init(this)
         val entryId = intent.getStringExtra(EXTRA_ENTRY_ID)
         val entry   = entryId?.let(PasswordRepository::getById)
 
         Log.i(TAG, "  entryId=$entryId  found=${entry != null}  site=${entry?.siteName}  user=${entry?.username}")
-        PassKeyTrace.i("CredFill", "entryId=$entryId found=${entry != null} site=${entry?.siteName}")
+        VaultTrace.i("CredFill", "entryId=$entryId found=${entry != null} site=${entry?.siteName}")
 
         if (entry == null) {
             Log.w(TAG, "❌ Entry not found for id=$entryId — aborting")
-            PassKeyTrace.w("CredFill", "entry not found for id=$entryId")
+            VaultTrace.w("CredFill", "entry not found for id=$entryId")
             setResult(Activity.RESULT_CANCELED)
             finish()
             return
@@ -51,17 +51,17 @@ class CredentialFillActivity : FragmentActivity() {
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
 
         Log.i(TAG, "  biometricAvailable=$canBiometric")
-        PassKeyTrace.i("CredFill", "biometricAvailable=$canBiometric site=${entry.siteName}")
+        VaultTrace.i("CredFill", "biometricAvailable=$canBiometric site=${entry.siteName}")
 
         if (!canBiometric) {
             Log.i(TAG, "  No biometric — returning credential directly")
-            PassKeyTrace.i("CredFill", "no biometric — filling directly")
+            VaultTrace.i("CredFill", "no biometric — filling directly")
             returnCredential(entry)
             return
         }
 
         Log.i(TAG, "  Showing biometric prompt for ${entry.siteName}")
-        PassKeyTrace.i("CredFill", "showing biometric prompt for ${entry.siteName}")
+        VaultTrace.i("CredFill", "showing biometric prompt for ${entry.siteName}")
 
         BiometricPrompt(
             this,
@@ -69,18 +69,18 @@ class CredentialFillActivity : FragmentActivity() {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     Log.i(TAG, "✅ Biometric succeeded — returning credential for ${entry.siteName}")
-                    PassKeyTrace.i("CredFill", "biometric SUCCESS → returning credential for ${entry.siteName}")
+                    VaultTrace.i("CredFill", "biometric SUCCESS → returning credential for ${entry.siteName}")
                     returnCredential(entry)
                 }
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     Log.w(TAG, "⚠️ Biometric error code=$errorCode msg=$errString")
-                    PassKeyTrace.w("CredFill", "biometric error code=$errorCode msg=$errString")
+                    VaultTrace.w("CredFill", "biometric error code=$errorCode msg=$errString")
                     setResult(Activity.RESULT_CANCELED)
                     finish()
                 }
                 override fun onAuthenticationFailed() {
                     Log.w(TAG, "⚠️ Biometric failed (wrong finger/face)")
-                    PassKeyTrace.w("CredFill", "biometric auth failed (wrong biometric)")
+                    VaultTrace.w("CredFill", "biometric auth failed (wrong biometric)")
                 }
             },
         ).authenticate(
@@ -103,10 +103,10 @@ class CredentialFillActivity : FragmentActivity() {
             )
             setResult(Activity.RESULT_OK, responseIntent)
             Log.i(TAG, "✅ Credential returned via PendingIntentHandler for ${entry.siteName} / ${entry.username}")
-            PassKeyTrace.i("CredFill", "FILL SUCCESS site=${entry.siteName} user=${entry.username}")
+            VaultTrace.i("CredFill", "FILL SUCCESS site=${entry.siteName} user=${entry.username}")
         } else {
             Log.w(TAG, "⚠️ SDK < 34 — cannot return credential via Credential Manager")
-            PassKeyTrace.w("CredFill", "SDK=${Build.VERSION.SDK_INT} < 34 — Credential Manager not available")
+            VaultTrace.w("CredFill", "SDK=${Build.VERSION.SDK_INT} < 34 — Credential Manager not available")
             setResult(Activity.RESULT_CANCELED)
         }
         finish()

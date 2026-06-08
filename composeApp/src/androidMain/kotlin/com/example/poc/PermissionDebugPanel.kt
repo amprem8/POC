@@ -45,7 +45,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /**
  * Debug panel shown inside the vault header.
- * Displays live status of the fill-related integrations PassKey uses.
+ * Displays live status of the fill-related integrations Vault uses.
  * Tapping any row with a red ✗ opens the relevant settings page directly.
  * Collapsed by default — tap the header to expand.
  */
@@ -80,8 +80,10 @@ fun PermissionDebugPanel() {
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            VaultLogo(size = 20.dp, cornerRadius = 6.dp)
+            Spacer(Modifier.width(8.dp))
             Text(
-                text = if (allGood) "🛡️  PassKey — All permissions active" else "⚠️  PassKey — Some permissions missing",
+                text = if (allGood) "Vault — All permissions active" else "Vault — Some permissions missing",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White,
@@ -126,7 +128,7 @@ fun PermissionDebugPanel() {
                     "📱 Chrome setup: Chrome → ⋮ → Settings → Passwords → " +
                         "turn OFF 'Offer to save passwords' → " +
                         "turn OFF 'Auto Sign-in' → " +
-                        "then Chrome uses PassKey as the system autofill provider",
+                        "then Chrome uses Vault as the system autofill provider",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFF93C5FD),
                     lineHeight = 16.sp,
@@ -136,7 +138,7 @@ fun PermissionDebugPanel() {
                     flags["Credential Provider (Android 14+ fill)"] == false) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "📍 Credential Provider: Settings → Passwords, passkeys & autofill → Additional providers → toggle PassKey ON → then tap Done ✓ above",
+                        "📍 Credential Provider: Settings → Passwords, credentials & autofill → Additional providers → toggle Vault ON → then tap Done ✓ above",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFFCD34D),
                         lineHeight = 16.sp,
@@ -209,7 +211,7 @@ private fun FlagRow(label: String, granted: Boolean, onFix: () -> Unit) {
                 Button(
                     onClick = {
                         // Fallback marker for devices where secure settings cannot be read.
-                        context.getSharedPreferences("passkey_prefs", Context.MODE_PRIVATE)
+                        context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE)
                             .edit().putBoolean("credential_provider_enabled", true).apply()
                         onFix()
                     },
@@ -257,7 +259,7 @@ fun isCredentialProviderEnabled(context: Context): Boolean {
             "credential_provider",
             "autofill_service_search_uri",
         )
-        val ourServiceName = "PassKeyCredentialProviderService"
+        val ourServiceName = "VaultCredentialProviderService"
         val ourPackage = context.packageName
         keysToCheck.any { key ->
             val value = Settings.Secure.getString(context.contentResolver, key) ?: ""
@@ -265,7 +267,7 @@ fun isCredentialProviderEnabled(context: Context): Boolean {
         }
     } catch (_: Exception) {
         // Fallback to user-acknowledged flag
-        context.getSharedPreferences("passkey_prefs", Context.MODE_PRIVATE)
+        context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE)
             .getBoolean("credential_provider_enabled", false)
     }
 }
