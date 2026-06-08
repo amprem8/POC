@@ -29,19 +29,82 @@
     <compatibility-package android:name="com.chrome.dev" />
     <!-- Chrome Canary -->
     <compatibility-package android:name="com.chrome.canary" />
+    <!-- Chromium -->
+    <compatibility-package android:name="org.chromium.chrome" />
+    <!-- Android WebView -->
+    <compatibility-package android:name="com.google.android.webview" />
     <!-- Samsung Internet -->
     <compatibility-package android:name="com.sec.android.app.sbrowser" />
+    <compatibility-package android:name="com.sec.android.app.sbrowser.beta" />
     <!-- Firefox -->
     <compatibility-package android:name="org.mozilla.firefox" />
     <compatibility-package android:name="org.mozilla.firefox_beta" />
+    <compatibility-package android:name="org.mozilla.fenix" />
+    <!-- Firefox Focus / Klar -->
+    <compatibility-package android:name="org.mozilla.focus" />
+    <compatibility-package android:name="org.mozilla.klar" />
     <!-- Microsoft Edge -->
     <compatibility-package android:name="com.microsoft.emmx" />
     <!-- Brave -->
     <compatibility-package android:name="com.brave.browser" />
+    <compatibility-package android:name="com.brave.browser.beta" />
+    <compatibility-package android:name="com.brave.browser.nightly" />
     <!-- Opera -->
     <compatibility-package android:name="com.opera.browser" />
+    <compatibility-package android:name="com.opera.mini.native" />
+    <compatibility-package android:name="com.opera.gx" />
+    <compatibility-package android:name="com.opera.touch" />
     <!-- DuckDuckGo -->
     <compatibility-package android:name="com.duckduckgo.mobile.android" />
+    <!-- Vivaldi -->
+    <compatibility-package android:name="com.vivaldi.browser" />
+    <!-- Kiwi Browser -->
+    <compatibility-package android:name="com.kiwibrowser.browser" />
+    <!-- UC Browser -->
+    <compatibility-package android:name="com.UCMobile.intl" />
+    <compatibility-package android:name="com.uc.browser.en" />
+    <!-- Ecosia -->
+    <compatibility-package android:name="com.ecosia.android" />
+    <!-- Yandex Browser -->
+    <compatibility-package android:name="com.yandex.browser" />
+    <!-- Mi / Mint Browser (Xiaomi) -->
+    <compatibility-package android:name="com.mi.globalbrowser" />
+    <compatibility-package android:name="com.mi.globalbrowser.mini" />
+    <!-- Naver Whale -->
+    <compatibility-package android:name="com.naver.whale" />
+    <!-- Via Browser -->
+    <compatibility-package android:name="mark.via.gp" />
+    <!-- Tor Browser -->
+    <compatibility-package android:name="org.torproject.torbrowser" />
+    <!-- Bromite -->
+    <compatibility-package android:name="org.bromite.bromite" />
+    <!-- Puffin Browser -->
+    <compatibility-package android:name="com.cloudmosa.puffinFree" />
+    <compatibility-package android:name="com.cloudmosa.puffin" />
+    <!-- Dolphin Browser -->
+    <compatibility-package android:name="mobi.mgeek.TunnyBrowser" />
+    <!-- Maxthon -->
+    <compatibility-package android:name="com.mx.browser" />
+    <!-- Phoenix Browser -->
+    <compatibility-package android:name="com.nicegram.nicegram" />
+    <!-- Silk Browser (Amazon) -->
+    <compatibility-package android:name="com.amazon.cloud9" />
+    <!-- Huawei Browser -->
+    <compatibility-package android:name="com.huawei.browser" />
+    <!-- QQ Browser -->
+    <compatibility-package android:name="com.tencent.mtt" />
+    <!-- Baidu Browser -->
+    <compatibility-package android:name="com.baidu.browser.apps" />
+    <!-- CM Browser (Cheetah Mobile) -->
+    <compatibility-package android:name="com.ksmobile.cb" />
+    <!-- Flynx -->
+    <compatibility-package android:name="com.nicegram.nicegram.browser" />
+    <!-- Adblock Browser -->
+    <compatibility-package android:name="org.nicegram.nicegram" />
+    <!-- Waterfox -->
+    <compatibility-package android:name="net.nicegram.nicegram" />
+    <!-- Soul Browser -->
+    <compatibility-package android:name="com.nicegram.nicegram.soul" />
 
 </autofill-service>
 

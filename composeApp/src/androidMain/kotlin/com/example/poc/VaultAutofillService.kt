@@ -198,9 +198,9 @@ class VaultAutofillService : AutofillService() {
             Log.i(TAG, "  usernameTag=${parsed.usernameField?.htmlTag}  passwordTag=${parsed.passwordField?.htmlTag}")
             VaultTrace.i("Autofill", "onSaveRequest origin=$origin user='$username' passLen=${password.length}")
 
-            if (username.isBlank() || password.isBlank()) {
-                Log.w(TAG, "❌ onSaveRequest skipped — blank credentials. user='$username' passLen=${password.length}")
-                VaultTrace.w("Autofill", "onSaveRequest skipped blank credentials user='$username' passLen=${password.length}")
+            if (password.isBlank()) {
+                Log.w(TAG, "❌ onSaveRequest skipped — blank password")
+                VaultTrace.w("Autofill", "onSaveRequest skipped blank password")
                 callback.onSuccess(); return
             }
             if (origin.isBlank()) {
@@ -218,10 +218,18 @@ class VaultAutofillService : AutofillService() {
                 callback.onSuccess(); return
             }
 
+            // ── Fallback username: scan structure for any non-password text ──
+            val finalUsername = username.ifBlank {
+                val fallback = extractFallbackUsername(structure)
+                Log.i(TAG, "  username was blank — fallback='$fallback'")
+                VaultTrace.i("Autofill", "username blank, fallback='$fallback'")
+                fallback ?: "user"
+            }
+
             val entry = PasswordEntry(
                 id           = System.currentTimeMillis().toString(),
                 siteName     = originDisplayName(origin),
-                username     = username,
+                username     = finalUsername,
                 password     = password,
                 loginUrl     = origin,
                 dateModified = System.currentTimeMillis(),
@@ -266,6 +274,47 @@ class VaultAutofillService : AutofillService() {
             setTextViewText(R.id.autofill_title, title)
             setTextViewText(R.id.autofill_subtitle, subtitle)
         }
+
+    // ── Fallback username scan ─────────────────────────────────────────────
+
+    /**
+     * Scans the full [AssistStructure] for any non-password text input value
+     * that could be a username/email. Used when normal field detection didn't
+     * identify a username field.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun extractFallbackUsername(structure: AssistStructure): String? {
+        for (i in 0 until structure.windowNodeCount) {
+            val result = findFirstTextValue(structure.getWindowNodeAt(i).rootViewNode)
+            if (result != null) return result
+        }
+        return null
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun findFirstTextValue(node: AssistStructure.ViewNode): String? {
+        val cls = node.className?.toString().orEmpty()
+        val htmlTag = node.htmlInfo?.tag?.lowercase().orEmpty()
+        val htmlType = node.htmlInfo?.attributes
+            ?.associate { it.first.lowercase() to it.second.lowercase() }
+            ?.get("type").orEmpty()
+
+        val isNativeEditable = cls.contains("EditText") || cls.contains("AutoCompleteTextView")
+        val isHtmlInput = htmlTag == "input" && htmlType != "password" && htmlType != "hidden"
+
+        if ((isNativeEditable || isHtmlInput) && !node.isPasswordInputType()) {
+            val value = node.currentValue()?.trim()
+            if (!value.isNullOrBlank() && value.length >= 2) {
+                Log.d(TAG, "  fallback username found: '$value' in cls=$cls tag=$htmlTag")
+                return value
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val result = findFirstTextValue(node.getChildAt(i))
+            if (result != null) return result
+        }
+        return null
+    }
 }
 
 // ─── ParsedLoginForm ────────────────────────────────────────────────────────
@@ -358,7 +407,12 @@ data class ParsedLoginForm(
                     semanticLabel.contains("login") || semanticLabel.contains("account") ||
                     semanticLabel.contains("phone") ||
                     node.isEmailInputType() ||
-                    (htmlTag == "input" && (htmlType == "text" || htmlType.isEmpty()))
+                    (htmlTag == "input" && (htmlType == "text" || htmlType.isEmpty())) ||
+                    // Native Android EditText fallback — catches fields in native apps
+                    // (e.g. Bitwarden, banking apps) that don't set autofill hints
+                    (htmlTag.isEmpty() && node.className?.toString().orEmpty().let { cls ->
+                        cls.contains("EditText") || cls.contains("AutoCompleteTextView")
+                    })
                 )
 
                 if (isPassword || isUsername) {

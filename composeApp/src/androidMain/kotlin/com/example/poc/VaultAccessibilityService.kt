@@ -34,12 +34,71 @@ class VaultAccessibilityService : AccessibilityService() {
         private const val TAG = "VaultA11y"
 
         val BROWSER_PACKAGES = setOf(
+            // Chrome variants
             "com.android.chrome",
+            "com.chrome.beta",
+            "com.chrome.dev",
+            "com.chrome.canary",
+            "org.chromium.chrome",
+            // Firefox variants
             "org.mozilla.firefox",
+            "org.mozilla.firefox_beta",
+            "org.mozilla.fenix",
+            "org.mozilla.focus",
+            "org.mozilla.klar",
+            // Microsoft Edge
             "com.microsoft.emmx",
+            // Brave variants
             "com.brave.browser",
+            "com.brave.browser.beta",
+            "com.brave.browser.nightly",
+            // Opera variants
             "com.opera.browser",
+            "com.opera.mini.native",
+            "com.opera.gx",
+            "com.opera.touch",
+            // Samsung Internet
             "com.sec.android.app.sbrowser",
+            "com.sec.android.app.sbrowser.beta",
+            // DuckDuckGo
+            "com.duckduckgo.mobile.android",
+            // Vivaldi
+            "com.vivaldi.browser",
+            // Kiwi
+            "com.kiwibrowser.browser",
+            // UC Browser
+            "com.UCMobile.intl",
+            "com.uc.browser.en",
+            // Ecosia
+            "com.ecosia.android",
+            // Yandex
+            "com.yandex.browser",
+            // Mi/Mint (Xiaomi)
+            "com.mi.globalbrowser",
+            "com.mi.globalbrowser.mini",
+            // Naver Whale
+            "com.naver.whale",
+            // Via Browser
+            "mark.via.gp",
+            // Tor
+            "org.torproject.torbrowser",
+            // Bromite
+            "org.bromite.bromite",
+            // Puffin
+            "com.cloudmosa.puffinFree",
+            "com.cloudmosa.puffin",
+            // Dolphin
+            "mobi.mgeek.TunnyBrowser",
+            // Maxthon
+            "com.mx.browser",
+            // Amazon Silk
+            "com.amazon.cloud9",
+            // Huawei Browser
+            "com.huawei.browser",
+            // QQ Browser
+            "com.tencent.mtt",
+            // Baidu Browser
+            "com.baidu.browser.apps",
         )
 
         /** Singleton reference so the vault screen can ask us to fill. */
