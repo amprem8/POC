@@ -15,7 +15,14 @@ interface PlatformServices {
     fun saveVaultConfig(config: VaultConfig)
     suspend fun promptBiometric(promptTitle: String, promptSubtitle: String): Boolean
     fun copyToClipboard(label: String, value: String)
-    fun saveRecoveryTextFile(fileName: String, content: String): String
+    fun showToast(message: String) {}
+
+    /**
+     * Launches the system browser for Comcast SSO (Azure AD OIDC + PKCE).
+     * Returns [SsoAuthResult] with tokens and email on success, or error on failure.
+     */
+    suspend fun startSsoAuth(): SsoAuthResult
+
     fun loadPasswordEntries(): List<PasswordEntry>
     fun deletePasswordEntry(id: String)
     fun updateNotes(id: String, notes: String)
@@ -34,7 +41,12 @@ class PreviewPlatformServices : PlatformServices {
     override fun saveVaultConfig(config: VaultConfig) { this.config = config }
     override suspend fun promptBiometric(promptTitle: String, promptSubtitle: String): Boolean = true
     override fun copyToClipboard(label: String, value: String) = Unit
-    override fun saveRecoveryTextFile(fileName: String, content: String): String = "Preview saved: $fileName"
+    override suspend fun startSsoAuth(): SsoAuthResult = SsoAuthResult(
+        success = true,
+        idToken = "preview-id-token",
+        accessToken = "preview-access-token",
+        email = "preview@comcast.com",
+    )
     override fun loadPasswordEntries(): List<PasswordEntry> = _entries.value
 
     override fun deletePasswordEntry(id: String) {

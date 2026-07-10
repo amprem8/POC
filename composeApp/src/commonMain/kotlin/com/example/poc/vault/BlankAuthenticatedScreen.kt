@@ -217,21 +217,25 @@ fun BlankAuthenticatedScreen(
                 }
             }
 
-            if (selectedSection.id == "all") {
-                SavedPasswordsScreen(
-                    entries = entries,
-                    onDelete = { id ->
-                        platformServices.deletePasswordEntry(id)
-                    },
-                    onUpdateNotes = { id, notes ->
-                        platformServices.updateNotes(id, notes)
-                    },
-                    headerContent = { PlatformPasswordHeader() },
-                )
-            } else if (selectedSection.id == "passkey") {
-                PasskeyScreen()
-            } else {
-                SectionPlaceholderCard(section = selectedSection)
+            when (selectedSection.id) {
+                "all" -> {
+                    SavedPasswordsScreen(
+                        entries = entries,
+                        onDelete = { id ->
+                            platformServices.deletePasswordEntry(id)
+                        },
+                        onUpdateNotes = { id, notes ->
+                            platformServices.updateNotes(id, notes)
+                        },
+                        headerContent = { PlatformPasswordHeader() },
+                    )
+                }
+                "passkey" -> {
+                    PasskeyScreen()
+                }
+                else -> {
+                    SectionPlaceholderCard(section = selectedSection)
+                }
             }
         }
 

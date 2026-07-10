@@ -37,5 +37,13 @@ val ONBOARDING_STEPS = listOf(
         buttonLabel = "Enable Browser Detection",
         skipLabel = "Skip",
     ),
+    OnboardingStep(
+        index = 3,
+        icon = "🔔",
+        title = "Stay informed",
+        description = "Allow notifications so Vault can confirm when a password is saved, alert you about security issues, and keep you updated.",
+        buttonLabel = "Enable Notifications",
+        skipLabel = "Skip",
+    ),
 )
 

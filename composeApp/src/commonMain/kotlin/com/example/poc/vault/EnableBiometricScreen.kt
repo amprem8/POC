@@ -29,7 +29,7 @@ fun EnableBiometricScreen(
 
     AuthScreenLayout(
         title = "Verify fingerprint unlock",
-        subtitle = "Fingerprint verification is required on first-time setup when available. After setup, you can log in with either fingerprint or master password.",
+        subtitle = "Fingerprint verification is required on first-time setup. After setup, you can unlock with either fingerprint or Comcast SSO.",
         message = message,
         content = {
             Icon(

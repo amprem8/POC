@@ -2,18 +2,10 @@ package com.example.poc
 
 import com.example.poc.vault.*
 
-import kotlinx.cinterop.BetaInteropApi
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import platform.Foundation.NSData
-import platform.Foundation.NSFileManager
-import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSUserDefaults
-import platform.Foundation.create
 import platform.LocalAuthentication.LAContext
 import platform.LocalAuthentication.LAPolicyDeviceOwnerAuthenticationWithBiometrics
 import platform.UIKit.UIPasteboard
@@ -23,7 +15,6 @@ import kotlin.coroutines.suspendCoroutine
 private const val VaultConfigKey = "vault_config"
 private const val PasswordEntriesKey = "password_entries"
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IOSPlatformServices : PlatformServices {
     private val defaults = NSUserDefaults.standardUserDefaults
     private val _entries = MutableStateFlow<List<PasswordEntry>>(emptyList())
@@ -62,12 +53,20 @@ class IOSPlatformServices : PlatformServices {
         UIPasteboard.generalPasteboard.string = value
     }
 
-    override fun saveRecoveryTextFile(fileName: String, content: String): String {
-        val downloadsPath = NSHomeDirectory() + "/Downloads"
-        NSFileManager.defaultManager.createDirectoryAtPath(downloadsPath, true, null, null)
-        val path = "$downloadsPath/$fileName"
-        NSFileManager.defaultManager.createFileAtPath(path, content.encodeToByteArray().toNSData(), null)
-        return "Saved recovery file to $path"
+    override fun showToast(message: String) {
+        // iOS doesn't have native toast; log for now
+        println("Toast: $message")
+    }
+
+    // ── SSO Authentication ──────────────────────────────────────────────
+
+    override suspend fun startSsoAuth(): SsoAuthResult {
+        // TODO: Implement using ASWebAuthenticationSession when iOS is prioritized
+        // For now, return a descriptive error
+        return SsoAuthResult(
+            success = false,
+            error = "SSO authentication is not yet implemented for iOS. Coming in Phase 3.",
+        )
     }
 
     override fun loadPasswordEntries(): List<PasswordEntry> {
@@ -115,15 +114,3 @@ class IOSPlatformServices : PlatformServices {
                 .joinToString("||FIELD||")
         }
 }
-
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-private fun ByteArray.toNSData(): NSData {
-    return usePinned { pinned ->
-        NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
-    }
-}
-
-
-
-
-

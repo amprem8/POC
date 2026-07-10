@@ -4,12 +4,9 @@ import com.example.poc.vault.*
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -17,7 +14,6 @@ import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.io.File
 import kotlin.coroutines.resume
 
 class AndroidPlatformServices(
@@ -72,33 +68,23 @@ class AndroidPlatformServices(
         }
     }
 
-    // ── Clipboard / file ──────────────────────────────────────────────────
+    // ── Clipboard ───────────────────────────────────────────────────────
 
     override fun copyToClipboard(label: String, value: String) {
         val mgr = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         mgr.setPrimaryClip(ClipData.newPlainText(label, value))
     }
 
-    override fun saveRecoveryTextFile(fileName: String, content: String): String {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val resolver = activity.contentResolver
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            if (uri != null) {
-                resolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(content) }
-                values.clear(); values.put(MediaStore.Downloads.IS_PENDING, 0)
-                resolver.update(uri, values, null, null)
-                return "Saved to Downloads/$fileName"
-            }
-        }
-        val dir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: activity.filesDir
-        val file = File(dir, fileName).also { it.writeText(content) }
-        return "Saved to ${file.absolutePath}"
+    override fun showToast(message: String) {
+        android.widget.Toast.makeText(activity, message, android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    // ── SSO Authentication ──────────────────────────────────────────────
+
+    private val ssoAuthHandler by lazy { SsoAuthHandler(activity) }
+
+    override suspend fun startSsoAuth(): SsoAuthResult {
+        return ssoAuthHandler.authenticate()
     }
 
     // ── Password entries — delegate to PasswordRepository ─────────────────

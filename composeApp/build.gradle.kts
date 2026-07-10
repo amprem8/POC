@@ -34,12 +34,13 @@ kotlin {
             implementation(libs.androidx.credentials.play)
             implementation(libs.androidx.security.crypto)
             implementation("io.ktor:ktor-client-okhttp:${libs.versions.ktor.get()}")
+            implementation(libs.androidx.browser)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
-            implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
+            implementation(libs.material.icons.extended)
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)

@@ -2,8 +2,10 @@ package com.example.poc
 
 import com.example.poc.vault.*
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -14,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -25,6 +28,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  *  0 → Autofill provider picker (ACTION_REQUEST_SET_AUTOFILL_SERVICE)
  *  1 → Credential Provider settings (android.settings.CREDENTIAL_PROVIDER / Android 14+)
  *  2 → Accessibility settings (direct deep-link to VaultAccessibilityService on Android 13+)
+ *  3 → Notification permission (runtime prompt on Android 13+, app notification settings otherwise)
  */
 fun handleOnboardingStepAction(context: Context, stepIndex: Int) {
     when (stepIndex) {
@@ -71,6 +75,9 @@ fun handleOnboardingStepAction(context: Context, stepIndex: Int) {
 
         // Step 2 — Accessibility service (direct deep-link on Android 13+)
         2 -> openAccessibilityServiceDirectly(context)
+
+        // Step 3 — Notification permission
+        3 -> openNotificationSettings(context)
     }
 }
 
@@ -109,7 +116,21 @@ fun detectCompletedSteps(context: Context): Set<Int> {
     // Step 1 (Credential Provider) — no runtime check available; mark if autofill done
     if (isAutofillServiceEnabled(context)) done.add(1)
     if (isAccessibilityServiceEnabled(context)) done.add(2)
+    if (isNotificationPermissionGranted(context)) done.add(3)
     return done
+}
+
+/** Checks whether the app has notification permission (Android 13+ runtime, pre-13 always true). */
+fun isNotificationPermissionGranted(context: Context): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    } else {
+        // Pre-Android 13: notifications are enabled by default unless user disabled in app settings
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        nm.areNotificationsEnabled()
+    }
 }
 
 

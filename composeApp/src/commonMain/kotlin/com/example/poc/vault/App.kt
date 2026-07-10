@@ -29,10 +29,16 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
         LaunchedEffect(Unit) {
             delay(1100)
             showSplash = false
-            uiState = controller.bootstrap(
+            val bootstrapState = controller.bootstrap(
                 savedConfig = platformServices.loadVaultConfig(),
                 biometricAvailable = platformServices.biometricAvailable,
+                nowMillis = currentTimeMillis(),
             )
+            uiState = bootstrapState
+            // If session is still valid and auto-resumed to Main, enable overlay monitoring
+            if (bootstrapState.route == VaultRoute.Main) {
+                platformServices.enableOverlayMonitoringAfterLogin()
+            }
         }
 
         Surface(
@@ -42,15 +48,6 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
             AnimatedContent(targetState = if (showSplash) VaultRoute.Splash else uiState.route, label = "vault-root") { route ->
                 when (route) {
                     VaultRoute.Splash -> OpeningSplashScreen()
-                    VaultRoute.CreateMasterPassword -> CreateMasterPasswordScreen(
-                        message = uiState.message,
-                        onContinue = { password, confirmPassword ->
-                            applyActionResult(
-                                result = controller.createMasterPassword(password, confirmPassword),
-                                platformServices = platformServices,
-                            ) { uiState = it }
-                        },
-                    )
 
                     VaultRoute.EnableBiometric -> EnableBiometricScreen(
                         message = uiState.message,
@@ -76,25 +73,36 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                         },
                     )
 
-                    VaultRoute.RecoveryPhrase -> RecoveryPhraseScreen(
-                        recoveryPhrase = uiState.recoveryPhrase,
+                    VaultRoute.SsoSetup -> SsoSetupScreen(
                         message = uiState.message,
-                        onCopy = {
-                            platformServices.copyToClipboard("$AppName Recovery", uiState.recoveryPhrase)
-                            uiState = uiState.copy(message = VaultMessage("Recovery phrase copied."))
-                        },
-                        onDownload = {
-                            val location = platformServices.saveRecoveryTextFile(
-                                fileName = "$AppName Recovery.txt",
-                                content = controller.recoveryFileContent(AppName),
-                            )
-                            uiState = uiState.copy(message = VaultMessage(location))
-                        },
-                        onContinue = {
-                            applyActionResult(
-                                result = controller.finishRecoveryPhraseStep(),
-                                platformServices = platformServices,
-                            ) { uiState = it }
+                        onSignInWithSso = {
+                            scope.launch {
+                                // Show loading state
+                                uiState = uiState.copy(
+                                    message = VaultMessage("Opening Comcast SSO..."),
+                                )
+                                val ssoResult = platformServices.startSsoAuth()
+                                val email = ssoResult.email
+                                if (ssoResult.success && email != null) {
+                                    applyActionResult(
+                                        result = controller.completeSsoSetup(
+                                            token = ssoResult.idToken ?: "",
+                                            email = email,
+                                            nowMillis = currentTimeMillis(),
+                                        ),
+                                        platformServices = platformServices,
+                                    ) { uiState = it }
+                                    platformServices.showToast("Welcome, $email")
+                                } else {
+                                    uiState = uiState.copy(
+                                        route = VaultRoute.SsoSetup,
+                                        message = VaultMessage(
+                                            ssoResult.error ?: "SSO authentication failed. Please try again.",
+                                            isError = true,
+                                        ),
+                                    )
+                                }
+                            }
                         },
                     )
 
@@ -110,42 +118,35 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                                 )
                             }
                         },
-                        onPasswordLogin = { password ->
-
-                            val result = controller.unlockWithPassword(password)
-
-                            if (result.uiState.route == VaultRoute.Main) {
-                                platformServices.enableOverlayMonitoringAfterLogin()
+                        onSsoLogin = {
+                            scope.launch {
+                                uiState = uiState.copy(
+                                    message = VaultMessage("Opening Comcast SSO..."),
+                                )
+                                val ssoResult = platformServices.startSsoAuth()
+                                val email = ssoResult.email
+                                if (ssoResult.success && email != null) {
+                                    // Update stored token with the fresh one
+                                    applyActionResult(
+                                        result = controller.completeSsoSetup(
+                                            token = ssoResult.idToken ?: "",
+                                            email = email,
+                                            nowMillis = currentTimeMillis(),
+                                        ),
+                                        platformServices = platformServices,
+                                    ) { uiState = it }
+                                    platformServices.enableOverlayMonitoringAfterLogin()
+                                    platformServices.showToast("Welcome back, $email")
+                                } else {
+                                    uiState = uiState.copy(
+                                        route = VaultRoute.Login,
+                                        message = VaultMessage(
+                                            ssoResult.error ?: "SSO authentication failed. Please try again.",
+                                            isError = true,
+                                        ),
+                                    )
+                                }
                             }
-
-                            applyActionResult(
-                                result = result,
-                                platformServices = platformServices,
-                            ) {
-                                uiState = it
-                            }
-                        },
-                        onForgotPassword = { uiState = controller.openForgotPassword() },
-                    )
-
-                    VaultRoute.ForgotPassword -> ForgotPasswordScreen(
-                        message = uiState.message,
-                        onVerify = { phrase -> uiState = controller.verifyRecoveryPhrase(phrase) },
-                        onBackToLogin = { uiState = controller.cancelForgotPassword() },
-                    )
-
-                    VaultRoute.ResetPassword -> CreateMasterPasswordScreen(
-                        message = uiState.message,
-                        title = "Reset master password",
-                        subtitle = "Your recovery phrase was verified. Set a new master password for this install.",
-                        helperText = "Use the same screen to save the new password you will use on future logins.",
-                        primaryButtonText = "Save new password",
-                        footerText = "After saving, you can unlock with either Touch ID or the new master password.",
-                        onContinue = { password, confirmPassword ->
-                            applyActionResult(
-                                result = controller.saveResetPassword(password, confirmPassword),
-                                platformServices = platformServices,
-                            ) { uiState = it }
                         },
                     )
 
@@ -153,7 +154,6 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
 
                     VaultRoute.Onboarding -> PlatformOnboardingScreen(
                         onFinish = {
-                            // Mark onboarding seen, persist, then go to Main vault
                             val cfg = platformServices.loadVaultConfig()
                             if (cfg != null) {
                                 platformServices.saveVaultConfig(cfg.copy(onboardingSeen = true))
@@ -187,8 +187,7 @@ private suspend fun runBiometricUnlock(
     )
 
     if (success) {
-
-        val result = controller.unlockWithBiometric()
+        val result = controller.unlockWithBiometric(nowMillis = currentTimeMillis())
 
         if (result.uiState.route == VaultRoute.Main) {
             platformServices.enableOverlayMonitoringAfterLogin()
@@ -210,5 +209,3 @@ private suspend fun runBiometricUnlock(
         )
     }
 }
-
-

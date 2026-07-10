@@ -1,16 +1,11 @@
 package com.example.poc.vault
 
-import kotlin.random.Random
-
 enum class VaultRoute {
     Splash,
-    CreateMasterPassword,
     EnableBiometric,
-    RecoveryPhrase,
+    SsoSetup,        // First-time SSO configuration (Azure AD OIDC + PKCE)
     Login,
-    ForgotPassword,
-    ResetPassword,
-    Onboarding,   // First-time permission setup (shown once after first login)
+    Onboarding,      // First-time permission setup (shown once after first login)
     Main,
 }
 
@@ -20,19 +15,31 @@ data class VaultMessage(
 )
 
 data class VaultConfig(
-    val masterPassword: String,
     val biometricEnabled: Boolean,
-    val recoveryPhrase: String,
-    val recoveryPhraseAcknowledged: Boolean,
-    val onboardingSeen: Boolean = false,   // true after user completes the first-time setup flow
-)
+    val ssoAuthenticated: Boolean = false,
+    val ssoToken: String? = null,
+    val ssoEmail: String? = null,
+    val onboardingSeen: Boolean = false,
+    val ssoTokenTimestamp: Long = 0L, // epoch millis when SSO token was obtained
+) {
+    companion object {
+        /** SSO session validity duration: 6 hours in milliseconds. */
+        const val SSO_SESSION_DURATION_MS = 6 * 60 * 60 * 1000L
+    }
+
+    /** Returns true if the SSO token is still valid (obtained less than 6 hours ago). */
+    fun isSsoSessionValid(nowMillis: Long): Boolean {
+        if (!ssoAuthenticated || ssoTokenTimestamp == 0L) return false
+        val elapsed = nowMillis - ssoTokenTimestamp
+        return elapsed in 0..SSO_SESSION_DURATION_MS
+    }
+}
 
 data class VaultUiState(
     val route: VaultRoute = VaultRoute.Splash,
     val biometricAvailable: Boolean = false,
     val biometricEnabled: Boolean = false,
     val biometricRequired: Boolean = false,
-    val recoveryPhrase: String = "",
     val message: VaultMessage? = null,
 )
 
@@ -41,111 +48,70 @@ data class VaultActionResult(
     val persistedConfig: VaultConfig? = null,
 )
 
-private data class PendingSetup(
-    val masterPassword: String,
-    val recoveryPhrase: String,
-)
-
-class VaultAppController(
-    private val recoveryPhraseProvider: () -> String = ::generateRecoveryPhrase,
-) {
+class VaultAppController {
     private var currentConfig: VaultConfig? = null
-    private var pendingSetup: PendingSetup? = null
-    private var biometricSetupRequired = false
-    private var recoveryVerified = false
     private var biometricAvailable = false
 
-    fun bootstrap(savedConfig: VaultConfig?, biometricAvailable: Boolean): VaultUiState {
+    fun bootstrap(savedConfig: VaultConfig?, biometricAvailable: Boolean, nowMillis: Long): VaultUiState {
         currentConfig = savedConfig
-        pendingSetup = null
-        biometricSetupRequired = false
-        recoveryVerified = false
         this.biometricAvailable = biometricAvailable
 
         return when {
+            // Fresh install – start with biometric setup
             savedConfig == null -> VaultUiState(
-                route = VaultRoute.CreateMasterPassword,
+                route = VaultRoute.EnableBiometric,
                 biometricAvailable = biometricAvailable,
+                biometricRequired = true,
             )
-
-            !savedConfig.recoveryPhraseAcknowledged -> VaultUiState(
-                route = VaultRoute.RecoveryPhrase,
-                biometricAvailable = biometricAvailable,
-                biometricEnabled = savedConfig.biometricEnabled,
-                recoveryPhrase = savedConfig.recoveryPhrase,
-                message = VaultMessage("Save your recovery phrase. This is the only screen where it will be shown in full."),
-            )
-
+            // SSO session still valid (within 6 hours) — skip login entirely
+            savedConfig.isSsoSessionValid(nowMillis) -> {
+                val target = if (!savedConfig.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
+                VaultUiState(
+                    route = target,
+                    biometricAvailable = biometricAvailable,
+                    biometricEnabled = savedConfig.biometricEnabled,
+                )
+            }
+            // Existing user but session expired – go to login
             else -> loginState()
         }
     }
 
-    fun createMasterPassword(password: String, confirmPassword: String): VaultActionResult {
-        val normalizedPassword = password.trim()
-        val normalizedConfirmPassword = confirmPassword.trim()
-
-        val validationMessage = validatePassword(normalizedPassword, normalizedConfirmPassword)
-        if (validationMessage != null) {
-            return VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.CreateMasterPassword,
-                    biometricAvailable = biometricAvailable,
-                    message = VaultMessage(validationMessage, isError = true),
-                ),
-            )
-        }
-
-        pendingSetup = PendingSetup(
-            masterPassword = normalizedPassword,
-            recoveryPhrase = recoveryPhraseProvider(),
-        )
-        biometricSetupRequired = biometricAvailable
-
-        return if (biometricAvailable) {
-            VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.EnableBiometric,
-                    biometricAvailable = true,
-                    biometricRequired = true,
-                ),
-            )
-        } else {
-            persistPendingSetup(enableBiometric = false)
-        }
-    }
-
+    /**
+     * Called after successful biometric verification during first-time setup.
+     * Proceeds to SSO setup.
+     */
     fun saveBiometricPreference(enabled: Boolean): VaultActionResult {
-        if (biometricSetupRequired && !enabled) {
-            return VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.EnableBiometric,
-                    biometricAvailable = biometricAvailable,
-                    biometricRequired = true,
-                    message = VaultMessage(
-                        "Fingerprint verification is required to finish first-time setup on this device.",
-                        isError = true,
-                    ),
-                ),
-            )
-        }
+        val config = VaultConfig(
+            biometricEnabled = enabled,
+            ssoAuthenticated = false,
+        )
+        currentConfig = config
 
-        return persistPendingSetup(enableBiometric = enabled)
+        return VaultActionResult(
+            uiState = VaultUiState(
+                route = VaultRoute.SsoSetup,
+                biometricAvailable = biometricAvailable,
+                biometricEnabled = enabled,
+                message = VaultMessage("Fingerprint configured successfully. Now sign in with Comcast SSO."),
+            ),
+            persistedConfig = config,
+        )
     }
 
-    fun finishRecoveryPhraseStep(): VaultActionResult {
-        val updatedConfig = currentConfig?.copy(recoveryPhraseAcknowledged = true)
-            ?: return VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.CreateMasterPassword,
-                    biometricAvailable = biometricAvailable,
-                ),
-            )
-
+    /**
+     * Called after user completes SSO sign-in via Azure AD OIDC + PKCE.
+     * Stores the real SSO token and email, proceeds to onboarding or main.
+     */
+    fun completeSsoSetup(token: String, email: String, nowMillis: Long): VaultActionResult {
+        val updatedConfig = (currentConfig ?: VaultConfig(biometricEnabled = true)).copy(
+            ssoAuthenticated = true,
+            ssoToken = token,
+            ssoEmail = email,
+            ssoTokenTimestamp = nowMillis,
+        )
         currentConfig = updatedConfig
-        pendingSetup = null
-        biometricSetupRequired = false
 
-        // First-time user: route to onboarding after recovery phrase step
         val targetRoute = if (!updatedConfig.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
         return VaultActionResult(
             uiState = VaultUiState(
@@ -157,44 +123,33 @@ class VaultAppController(
         )
     }
 
-    fun unlockWithPassword(password: String): VaultActionResult {
-        val config = currentConfig
-        if (config == null) {
-            return VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.CreateMasterPassword,
-                    biometricAvailable = biometricAvailable,
-                ),
-            )
-        }
-
-        return if (password == config.masterPassword) {
-            val target = if (!config.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
-            VaultActionResult(
-                uiState = VaultUiState(
-                    route = target,
-                    biometricAvailable = biometricAvailable,
-                    biometricEnabled = config.biometricEnabled,
-                ),
-            )
-        } else {
-            VaultActionResult(
-                uiState = loginState(message = VaultMessage("Incorrect master password.", isError = true)),
-            )
-        }
-    }
-
-    fun unlockWithBiometric(): VaultActionResult {
+    /**
+     * Unlock via biometric on login screen.
+     * Only allowed if the SSO session is still valid (within 6 hours).
+     */
+    fun unlockWithBiometric(nowMillis: Long): VaultActionResult {
         val config = currentConfig
         return if (config?.biometricEnabled == true) {
-            val target = if (!config.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
-            VaultActionResult(
-                uiState = VaultUiState(
-                    route = target,
-                    biometricAvailable = biometricAvailable,
-                    biometricEnabled = true,
-                ),
-            )
+            if (!config.isSsoSessionValid(nowMillis)) {
+                // SSO session expired – force re-authentication via SSO
+                VaultActionResult(
+                    uiState = loginState(
+                        message = VaultMessage(
+                            "Your session has expired. Please sign in with Comcast SSO to continue.",
+                            isError = true,
+                        ),
+                    ),
+                )
+            } else {
+                val target = if (!config.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
+                VaultActionResult(
+                    uiState = VaultUiState(
+                        route = target,
+                        biometricAvailable = biometricAvailable,
+                        biometricEnabled = true,
+                    ),
+                )
+            }
         } else {
             VaultActionResult(
                 uiState = loginState(message = VaultMessage("Biometric unlock is not enabled on this device.", isError = true)),
@@ -202,139 +157,26 @@ class VaultAppController(
         }
     }
 
-    fun openForgotPassword(): VaultUiState {
-        recoveryVerified = false
-        return VaultUiState(
-            route = VaultRoute.ForgotPassword,
-            biometricAvailable = biometricAvailable,
-            biometricEnabled = currentConfig?.biometricEnabled == true,
-        )
-    }
-
-    fun cancelForgotPassword(): VaultUiState {
-        recoveryVerified = false
-        return loginState()
-    }
-
-    fun verifyRecoveryPhrase(input: String): VaultUiState {
+    /**
+     * Unlock via SSO on login screen — validates that SSO was previously configured.
+     */
+    fun unlockWithSso(): VaultActionResult {
         val config = currentConfig
-        if (config == null) {
-            return VaultUiState(
-                route = VaultRoute.CreateMasterPassword,
-                biometricAvailable = biometricAvailable,
-            )
-        }
-
-        val normalizedInput = input.trim().replace(Regex("\\s+"), " ")
-        recoveryVerified = normalizedInput == config.recoveryPhrase
-
-        return if (recoveryVerified) {
-            VaultUiState(
-                route = VaultRoute.ResetPassword,
-                biometricAvailable = biometricAvailable,
-                biometricEnabled = config.biometricEnabled,
-                message = VaultMessage("Recovery phrase verified. Create a new master password."),
+        return if (config?.ssoAuthenticated == true) {
+            val target = if (!config.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
+            VaultActionResult(
+                uiState = VaultUiState(
+                    route = target,
+                    biometricAvailable = biometricAvailable,
+                    biometricEnabled = config.biometricEnabled,
+                    message = VaultMessage("Signed in with Comcast SSO."),
+                ),
             )
         } else {
-            VaultUiState(
-                route = VaultRoute.ForgotPassword,
-                biometricAvailable = biometricAvailable,
-                biometricEnabled = config.biometricEnabled,
-                message = VaultMessage("Recovery phrase does not match the one saved for this install.", isError = true),
+            VaultActionResult(
+                uiState = loginState(message = VaultMessage("SSO is not configured. Please reinstall and set up.", isError = true)),
             )
         }
-    }
-
-    fun saveResetPassword(password: String, confirmPassword: String): VaultActionResult {
-        if (!recoveryVerified) {
-            return VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.ForgotPassword,
-                    biometricAvailable = biometricAvailable,
-                    biometricEnabled = currentConfig?.biometricEnabled == true,
-                    message = VaultMessage("Verify the recovery phrase before setting a new master password.", isError = true),
-                ),
-            )
-        }
-
-        val normalizedPassword = password.trim()
-        val normalizedConfirmPassword = confirmPassword.trim()
-        val validationMessage = validatePassword(normalizedPassword, normalizedConfirmPassword)
-        if (validationMessage != null) {
-            return VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.ResetPassword,
-                    biometricAvailable = biometricAvailable,
-                    biometricEnabled = currentConfig?.biometricEnabled == true,
-                    message = VaultMessage(validationMessage, isError = true),
-                ),
-            )
-        }
-
-        val updatedConfig = currentConfig?.copy(masterPassword = normalizedPassword)
-            ?: return VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.CreateMasterPassword,
-                    biometricAvailable = biometricAvailable,
-                ),
-            )
-
-        currentConfig = updatedConfig
-        recoveryVerified = false
-
-        val target = if (!updatedConfig.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
-        return VaultActionResult(
-            uiState = VaultUiState(
-                route = target,
-                biometricAvailable = biometricAvailable,
-                biometricEnabled = updatedConfig.biometricEnabled,
-                message = VaultMessage("Master password updated successfully."),
-            ),
-            persistedConfig = updatedConfig,
-        )
-    }
-
-    fun recoveryFileContent(appName: String): String {
-        val phrase = currentConfig?.recoveryPhrase ?: pendingSetup?.recoveryPhrase.orEmpty()
-        return buildString {
-            appendLine("$appName Recovery")
-            appendLine()
-            appendLine("Recovery phrase:")
-            appendLine(phrase)
-            appendLine()
-            appendLine("Store this file in a safe place. Use this phrase only from the Forgot Password screen inside the app.")
-        }.trimEnd()
-    }
-
-    private fun persistPendingSetup(enableBiometric: Boolean): VaultActionResult {
-        val setup = pendingSetup
-            ?: return VaultActionResult(
-                uiState = VaultUiState(
-                    route = VaultRoute.CreateMasterPassword,
-                    biometricAvailable = biometricAvailable,
-                    message = VaultMessage("Start by creating a master password.", isError = true),
-                ),
-            )
-
-        val config = VaultConfig(
-            masterPassword = setup.masterPassword,
-            biometricEnabled = enableBiometric,
-            recoveryPhrase = setup.recoveryPhrase,
-            recoveryPhraseAcknowledged = false,
-        )
-        currentConfig = config
-        biometricSetupRequired = false
-
-        return VaultActionResult(
-            uiState = VaultUiState(
-                route = VaultRoute.RecoveryPhrase,
-                biometricAvailable = biometricAvailable,
-                biometricEnabled = enableBiometric,
-                recoveryPhrase = config.recoveryPhrase,
-                message = VaultMessage("Copy or download your recovery phrase before continuing."),
-            ),
-            persistedConfig = config,
-        )
     }
 
     private fun loginState(message: VaultMessage? = null): VaultUiState {
@@ -346,29 +188,4 @@ class VaultAppController(
             message = message,
         )
     }
-
-    private fun validatePassword(password: String, confirmPassword: String): String? {
-        return when {
-            password.isBlank() -> "Enter a master password to continue."
-            password.length < 8 -> "Master password must be at least 8 characters long."
-            confirmPassword.isBlank() -> "Confirm the master password to continue."
-            password != confirmPassword -> "Master passwords do not match."
-            else -> null
-        }
-    }
 }
-
-private val recoveryWords = listOf(
-    "amber", "anchor", "aster", "banner", "birch", "canyon", "cinder", "clover",
-    "coral", "ember", "falcon", "frost", "glimmer", "harbor", "hazel", "indigo",
-    "juniper", "lagoon", "linen", "meadow", "nectar", "onyx", "orchid", "parade",
-    "pebble", "quartz", "raven", "saffron", "spruce", "summit", "thunder", "timber",
-    "topaz", "trident", "velvet", "willow",
-)
-
-fun generateRecoveryPhrase(wordCount: Int = 12, random: Random = Random.Default): String {
-    return List(wordCount) {
-        recoveryWords[random.nextInt(recoveryWords.size)]
-    }.joinToString(" ")
-}
-

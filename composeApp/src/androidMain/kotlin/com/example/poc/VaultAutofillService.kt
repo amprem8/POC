@@ -64,6 +64,42 @@ class VaultAutofillService : AutofillService() {
             "th", "tbody", "thead", "tfoot", "ul", "ol", "li", "dl", "dt", "dd",
             "p", "h1", "h2", "h3", "h4", "h5", "h6", "a", "button", "img",
         )
+
+        /**
+         * Packages that should be IGNORED by autofill — WiFi, system settings,
+         * Bluetooth, VPN, and other non-website/app credential contexts.
+         * We only want to save/fill passwords for websites and apps.
+         */
+        private val BLOCKED_PACKAGES = setOf(
+            // WiFi settings / network UIs
+            "com.android.settings",
+            "com.android.wifi.dialog",
+            "com.android.systemui",
+            "com.samsung.android.wifi.p2paware.wifidirect",
+            "com.samsung.android.net.wifi.wifiguider",
+            "com.samsung.android.wifi",
+            "com.samsung.android.wifi.softap.widget",
+            "com.sec.android.app.wifimanager",
+            "com.google.android.gms",                       // Google WiFi provisioning
+            "com.huawei.systemmanager",
+            "com.oneplus.connectmanager",
+            "com.xiaomi.wifi",
+            // VPN / network config
+            "com.android.vpndialogs",
+            // Bluetooth pairing
+            "com.android.bluetooth",
+            // Our own app — don't autofill into ourselves
+            "com.example.poc",
+        )
+
+        /**
+         * Activity component substrings that indicate a WiFi context even when
+         * the package is generic (e.g. com.android.settings).
+         */
+        private val BLOCKED_ACTIVITY_KEYWORDS = setOf(
+            "wifi", "wlan", "tether", "hotspot", "network",
+            "bluetooth", "vpn", "nfc",
+        )
     }
 
     override fun onConnected() {
@@ -98,6 +134,12 @@ class VaultAutofillService : AutofillService() {
         }
 
         Log.d(TAG, "  structure.activity=${structure.activityComponent}  windows=${structure.windowNodeCount}")
+
+        // ── Block WiFi, system settings, and other non-credential contexts ──
+        if (shouldBlockPackage(structure)) {
+            callback.onSuccess(null)
+            return
+        }
 
         val parsed = ParsedLoginForm.from(structure)
         val requestedOrigin = parsed.origin
@@ -191,6 +233,11 @@ class VaultAutofillService : AutofillService() {
                 callback.onSuccess(); return
             }
 
+            // ── Block WiFi, system settings, and other non-credential contexts ──
+            if (shouldBlockPackage(structure)) {
+                callback.onSuccess(); return
+            }
+
             val parsed = ParsedLoginForm.from(structure)
             val username = parsed.usernameField?.currentValue.orEmpty().trim()
             val password = parsed.passwordField?.currentValue.orEmpty().trim()
@@ -255,6 +302,33 @@ class VaultAutofillService : AutofillService() {
             VaultTrace.e("Autofill", "onSaveRequest EXCEPTION", e)
         }
         callback.onSuccess()
+    }
+
+    // ── Package / activity blocking ─────────────────────────────────────────
+
+    /**
+     * Returns true if the requesting app is WiFi settings, system UI, Bluetooth,
+     * VPN, or another non-website/app context that should NOT trigger autofill.
+     */
+    private fun shouldBlockPackage(structure: AssistStructure): Boolean {
+        val pkg = structure.activityComponent?.packageName?.lowercase().orEmpty()
+        val activity = structure.activityComponent?.className?.lowercase().orEmpty()
+
+        // Direct package blocklist
+        if (pkg in BLOCKED_PACKAGES) {
+            Log.i(TAG, "⛔ BLOCKED package=$pkg activity=$activity — not a website/app credential context")
+            VaultTrace.i("Autofill", "BLOCKED package=$pkg activity=$activity")
+            return true
+        }
+
+        // Activity name keyword check (catches OEM-specific settings sub-activities)
+        if (BLOCKED_ACTIVITY_KEYWORDS.any { keyword -> activity.contains(keyword) }) {
+            Log.i(TAG, "⛔ BLOCKED activity keyword match: pkg=$pkg activity=$activity")
+            VaultTrace.i("Autofill", "BLOCKED activity keyword: pkg=$pkg activity=$activity")
+            return true
+        }
+
+        return false
     }
 
     // ── Dataset builders ─────────────────────────────────────────────────────

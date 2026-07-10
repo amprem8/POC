@@ -2,104 +2,148 @@ package com.example.poc.vault
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SharedCommonTest {
 
+    // Use a fixed "now" for testing — 2026-07-10T00:00:00Z
+    private val NOW = 1783814400000L
+    // A timestamp within the 6-hour window
+    private val RECENT = NOW - (3 * 60 * 60 * 1000L)   // 3 hours ago
+    // A timestamp outside the 6-hour window
+    private val EXPIRED = NOW - (7 * 60 * 60 * 1000L)  // 7 hours ago
+
     @Test
-    fun `fresh install starts at create master password`() {
-        val controller = VaultAppController { "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu" }
+    fun `fresh install starts at enable biometric`() {
+        val controller = VaultAppController()
 
-        val state = controller.bootstrap(savedConfig = null, biometricAvailable = true)
+        val state = controller.bootstrap(savedConfig = null, biometricAvailable = true, nowMillis = NOW)
 
-        assertEquals(VaultRoute.CreateMasterPassword, state.route)
+        assertEquals(VaultRoute.EnableBiometric, state.route)
         assertTrue(state.biometricAvailable)
+        assertTrue(state.biometricRequired)
     }
 
     @Test
-    fun `setup flow persists recovery phrase and ends on main screen`() {
-        val phrase = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu"
-        val controller = VaultAppController { phrase }
+    fun `setup flow goes biometric then sso then onboarding`() {
+        val controller = VaultAppController()
 
-        controller.bootstrap(savedConfig = null, biometricAvailable = true)
-        val passwordResult = controller.createMasterPassword("supersecret", "supersecret")
-        assertEquals(VaultRoute.EnableBiometric, passwordResult.uiState.route)
-        assertTrue(passwordResult.uiState.biometricRequired)
+        controller.bootstrap(savedConfig = null, biometricAvailable = true, nowMillis = NOW)
 
         val biometricResult = controller.saveBiometricPreference(enabled = true)
-        assertEquals(VaultRoute.RecoveryPhrase, biometricResult.uiState.route)
-        assertEquals(phrase, biometricResult.uiState.recoveryPhrase)
+        assertEquals(VaultRoute.SsoSetup, biometricResult.uiState.route)
         assertNotNull(biometricResult.persistedConfig)
         assertTrue(biometricResult.persistedConfig.biometricEnabled)
-        assertFalse(biometricResult.persistedConfig.recoveryPhraseAcknowledged)
 
-        val finishResult = controller.finishRecoveryPhraseStep()
-        assertEquals(VaultRoute.Main, finishResult.uiState.route)
-        assertTrue(finishResult.persistedConfig?.recoveryPhraseAcknowledged == true)
+        val ssoResult = controller.completeSsoSetup(token = "test-id-token", email = "user@comcast.net", nowMillis = NOW)
+        assertEquals(VaultRoute.Onboarding, ssoResult.uiState.route)
+        assertNotNull(ssoResult.persistedConfig)
+        assertTrue(ssoResult.persistedConfig.ssoAuthenticated == true)
+        assertEquals(NOW, ssoResult.persistedConfig.ssoTokenTimestamp)
     }
 
     @Test
-    fun `master password unlock works after bootstrap`() {
+    fun `existing user with valid session skips login`() {
         val config = VaultConfig(
-            masterPassword = "supersecret",
-            biometricEnabled = false,
-            recoveryPhrase = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu",
-            recoveryPhraseAcknowledged = true,
+            biometricEnabled = true,
+            ssoAuthenticated = true,
+            ssoToken = "dummy-token",
+            ssoEmail = "user@comcast.net",
+            onboardingSeen = true,
+            ssoTokenTimestamp = RECENT,
         )
         val controller = VaultAppController()
 
-        val state = controller.bootstrap(savedConfig = config, biometricAvailable = false)
-        assertEquals(VaultRoute.Login, state.route)
+        val state = controller.bootstrap(savedConfig = config, biometricAvailable = true, nowMillis = NOW)
+        assertEquals(VaultRoute.Main, state.route)
+    }
 
-        val unlockResult = controller.unlockWithPassword("supersecret")
+    @Test
+    fun `existing user with expired session goes to login`() {
+        val config = VaultConfig(
+            biometricEnabled = true,
+            ssoAuthenticated = true,
+            ssoToken = "dummy-token",
+            ssoEmail = "user@comcast.net",
+            onboardingSeen = true,
+            ssoTokenTimestamp = EXPIRED,
+        )
+        val controller = VaultAppController()
+
+        val state = controller.bootstrap(savedConfig = config, biometricAvailable = true, nowMillis = NOW)
+        assertEquals(VaultRoute.Login, state.route)
+    }
+
+    @Test
+    fun `biometric unlock works with valid session`() {
+        val config = VaultConfig(
+            biometricEnabled = true,
+            ssoAuthenticated = true,
+            ssoToken = "dummy-token",
+            ssoEmail = "user@comcast.net",
+            onboardingSeen = true,
+            ssoTokenTimestamp = RECENT,
+        )
+        val controller = VaultAppController()
+
+        controller.bootstrap(savedConfig = config, biometricAvailable = true, nowMillis = NOW)
+
+        val unlockResult = controller.unlockWithBiometric(nowMillis = NOW)
         assertEquals(VaultRoute.Main, unlockResult.uiState.route)
     }
 
     @Test
-    fun `forgot password verifies recovery phrase and updates master password`() {
+    fun `biometric unlock fails with expired session`() {
         val config = VaultConfig(
-            masterPassword = "oldpassword",
             biometricEnabled = true,
-            recoveryPhrase = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu",
-            recoveryPhraseAcknowledged = true,
+            ssoAuthenticated = true,
+            ssoToken = "dummy-token",
+            ssoEmail = "user@comcast.net",
+            onboardingSeen = true,
+            ssoTokenTimestamp = EXPIRED,
         )
         val controller = VaultAppController()
 
-        controller.bootstrap(savedConfig = config, biometricAvailable = true)
-        assertEquals(VaultRoute.ForgotPassword, controller.openForgotPassword().route)
+        controller.bootstrap(savedConfig = config, biometricAvailable = true, nowMillis = NOW)
 
-        val recoveryState = controller.verifyRecoveryPhrase(config.recoveryPhrase)
-        assertEquals(VaultRoute.ResetPassword, recoveryState.route)
-
-        val resetResult = controller.saveResetPassword("newpassword", "newpassword")
-        assertEquals(VaultRoute.Main, resetResult.uiState.route)
-        assertEquals("newpassword", resetResult.persistedConfig?.masterPassword)
+        val unlockResult = controller.unlockWithBiometric(nowMillis = NOW)
+        assertEquals(VaultRoute.Login, unlockResult.uiState.route)
+        assertTrue(unlockResult.uiState.message?.isError == true)
+        assertTrue(unlockResult.uiState.message?.text?.contains("expired") == true)
     }
 
     @Test
-    fun `first install cannot skip biometric when biometrics are available`() {
+    fun `sso unlock works after bootstrap`() {
+        val config = VaultConfig(
+            biometricEnabled = true,
+            ssoAuthenticated = true,
+            ssoToken = "dummy-token",
+            ssoEmail = "user@comcast.net",
+            onboardingSeen = true,
+            ssoTokenTimestamp = EXPIRED, // even expired, SSO login refreshes the token
+        )
         val controller = VaultAppController()
 
-        controller.bootstrap(savedConfig = null, biometricAvailable = true)
-        controller.createMasterPassword("supersecret", "supersecret")
+        controller.bootstrap(savedConfig = config, biometricAvailable = true, nowMillis = NOW)
 
-        val result = controller.saveBiometricPreference(enabled = false)
-
-        assertEquals(VaultRoute.EnableBiometric, result.uiState.route)
-        assertTrue(result.uiState.biometricRequired)
-        assertTrue(result.uiState.message?.isError == true)
+        val unlockResult = controller.unlockWithSso()
+        assertEquals(VaultRoute.Main, unlockResult.uiState.route)
     }
 
     @Test
-    fun `invalid password shows error`() {
+    fun `sso unlock fails when not configured`() {
+        val config = VaultConfig(
+            biometricEnabled = true,
+            ssoAuthenticated = false,
+            onboardingSeen = true,
+        )
         val controller = VaultAppController()
 
-        controller.bootstrap(savedConfig = null, biometricAvailable = false)
-        val result = controller.createMasterPassword("short", "short")
+        controller.bootstrap(savedConfig = config, biometricAvailable = true, nowMillis = NOW)
 
-        assertEquals(VaultRoute.CreateMasterPassword, result.uiState.route)
-        assertTrue(result.uiState.message?.isError == true)
+        val unlockResult = controller.unlockWithSso()
+        assertEquals(VaultRoute.Login, unlockResult.uiState.route)
+        assertTrue(unlockResult.uiState.message?.isError == true)
     }
 }
