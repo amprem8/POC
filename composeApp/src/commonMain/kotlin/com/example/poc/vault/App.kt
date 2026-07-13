@@ -86,12 +86,13 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                                 if (ssoResult.success && email != null) {
                                     applyActionResult(
                                         result = controller.completeSsoSetup(
-                                            token = ssoResult.idToken ?: "",
                                             email = email,
                                             nowMillis = currentTimeMillis(),
                                         ),
                                         platformServices = platformServices,
                                     ) { uiState = it }
+                                    // Sync credentials from xVault after first SSO setup
+                                    platformServices.syncFromXVault()
                                     platformServices.showToast("Welcome, $email")
                                 } else {
                                     uiState = uiState.copy(
@@ -126,15 +127,16 @@ fun App(platformServices: PlatformServices = PreviewPlatformServices()) {
                                 val ssoResult = platformServices.startSsoAuth()
                                 val email = ssoResult.email
                                 if (ssoResult.success && email != null) {
-                                    // Update stored token with the fresh one
+                                    // Update stored session with the fresh SSO
                                     applyActionResult(
                                         result = controller.completeSsoSetup(
-                                            token = ssoResult.idToken ?: "",
                                             email = email,
                                             nowMillis = currentTimeMillis(),
                                         ),
                                         platformServices = platformServices,
                                     ) { uiState = it }
+                                    // Sync credentials from xVault on re-login
+                                    platformServices.syncFromXVault()
                                     platformServices.enableOverlayMonitoringAfterLogin()
                                     platformServices.showToast("Welcome back, $email")
                                 } else {

@@ -27,6 +27,12 @@ interface PlatformServices {
     fun deletePasswordEntry(id: String)
     fun updateNotes(id: String, notes: String)
     fun enableOverlayMonitoringAfterLogin() = Unit
+
+    /**
+     * Sync credentials from xVault backend after login.
+     * Returns true on successful sync, false if offline or failed.
+     */
+    suspend fun syncFromXVault(): Boolean = false
 }
 
 class PreviewPlatformServices : PlatformServices {

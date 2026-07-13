@@ -57,6 +57,37 @@ class VaultAutofillService : AutofillService() {
          */
         internal val INPUT_HTML_TAGS = setOf("input", "textarea", "select")
 
+        /**
+         * SSO / Identity Provider domains that should NEVER be saved.
+         * Users authenticate through these for SSO — the credentials belong to the
+         * identity provider, not to the target application. Storing them would be:
+         * 1. A security risk (SSO tokens grant access to many services)
+         * 2. Confusing (user sees "Microsoft" entry instead of the app they signed into)
+         */
+        private val SSO_BLOCKED_DOMAINS = setOf(
+            "login.microsoftonline.com",
+            "login.microsoft.com",
+            "login.live.com",
+            "login.windows.net",
+            "accounts.google.com",
+            "accounts.youtube.com",
+            "appleid.apple.com",
+            "login.xfinity.com",
+            "oauth.xfinity.com",
+            "login.comcast.net",
+            "login.comcast.com",
+            "idm.comcast.net",
+            "oauth.comcast.com",
+            "auth0.com",
+            "okta.com",
+            "login.okta.com",
+            "dev-login.okta.com",
+            "cognito-idp.amazonaws.com",
+            "sso.comcast.com",
+            "federation.comcast.com",
+            "localhost",  // SSO callback on localhost
+        )
+
         /** HTML tags that are containers — never classify as credential fields. */
         private val CONTAINER_HTML_TAGS = setOf(
             "form", "div", "span", "label", "fieldset", "section", "article",
@@ -105,6 +136,12 @@ class VaultAutofillService : AutofillService() {
     override fun onConnected() {
         super.onConnected()
         PasswordRepository.init(this)
+        // Set xVault user context from saved config if available
+        val prefs = getSharedPreferences(PasswordRepository.PREFS_NAME, MODE_PRIVATE)
+        val config = decodeVaultConfig(prefs.getString("vault_config", null))
+        config?.ssoEmail?.let { email ->
+            PasswordRepository.setUserFromEmail(email)
+        }
         Log.i(TAG, "✅ onConnected — autofill service bound. entries=${PasswordRepository.snapshot().size} SDK=${Build.VERSION.SDK_INT}")
         VaultTrace.i("Autofill", "onConnected entries=${PasswordRepository.snapshot().size} SDK=${Build.VERSION.SDK_INT}")
     }
@@ -145,6 +182,15 @@ class VaultAutofillService : AutofillService() {
         val requestedOrigin = parsed.origin
 
         Log.i(TAG, "  package=${parsed.packageName}  webDomain=${parsed.webDomain}  origin=$requestedOrigin")
+
+        // ── Block SSO/identity provider pages ──────────────────────────────
+        if (isSsoDomain(requestedOrigin)) {
+            Log.i(TAG, "⛔ BLOCKED SSO domain in onFillRequest: $requestedOrigin")
+            VaultTrace.i("Autofill", "BLOCKED SSO fill: $requestedOrigin")
+            callback.onSuccess(null)
+            return
+        }
+
         Log.i(TAG, "  hasUsername=${parsed.usernameField != null}  hasPassword=${parsed.passwordField != null}")
         if (parsed.usernameField != null) {
             Log.i(TAG, "  usernameField: tag=${parsed.usernameField.htmlTag} confidence=${parsed.usernameField.confidence}")
@@ -258,6 +304,13 @@ class VaultAutofillService : AutofillService() {
                 callback.onSuccess(); return
             }
 
+            // ── Block SSO/identity provider credentials ──────────────────
+            if (isSsoDomain(origin)) {
+                Log.i(TAG, "⛔ onSaveRequest BLOCKED — SSO domain: $origin (never store identity provider credentials)")
+                VaultTrace.i("Autofill", "BLOCKED SSO domain: $origin")
+                callback.onSuccess(); return
+            }
+
             // ── Reject masked passwords (safety valve) ──────────────────────
             val maskChars = setOf('•', '●', '◦', '○', '*', '⬤', '⚫', '■', '█', '\u2022', '\u25CF')
             val isMasked = password.all { it in maskChars }
@@ -329,6 +382,17 @@ class VaultAutofillService : AutofillService() {
         }
 
         return false
+    }
+
+    /**
+     * Returns true if the origin is an SSO / identity provider domain.
+     * We should NEVER save or offer autofill for these domains.
+     */
+    private fun isSsoDomain(origin: String): Boolean {
+        val normalized = origin.lowercase().trim()
+        return SSO_BLOCKED_DOMAINS.any { blocked ->
+            normalized == blocked || normalized.endsWith(".$blocked")
+        }
     }
 
     // ── Dataset builders ─────────────────────────────────────────────────────

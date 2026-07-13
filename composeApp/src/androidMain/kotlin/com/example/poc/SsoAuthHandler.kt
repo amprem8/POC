@@ -14,8 +14,10 @@ import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 
 /**
  * Handles the OAuth 2.0 Authorization Code + PKCE flow using Chrome Custom Tabs.
@@ -76,18 +78,25 @@ class SsoAuthHandler(private val activity: FragmentActivity) {
                     key to java.net.URLDecoder.decode(value, "UTF-8")
                 }
 
-                // Send a response to the browser so the user sees a confirmation page
-                // JavaScript will attempt to close the tab automatically
+                // Send a response to the browser so the user sees a brief confirmation
+                // The page immediately tries to close itself and navigate back to the app
                 val responseBody = """
                     <html>
-                    <head><title>Vault - SSO</title></head>
+                    <head><title>Vault - SSO</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    </head>
                     <body style="font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f7;">
                         <div style="text-align: center; padding: 40px; background: white; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-                            <h2 style="color: #111827;">&#10004; Authentication Successful</h2>
-                            <p style="color: #6b7280;">Returning to app...</p>
+                            <h2 style="color: #111827;">&#10004; Signed In</h2>
+                            <p style="color: #6b7280;">Returning to Vault...</p>
                         </div>
                         <script>
-                            setTimeout(function() { window.close(); }, 1500);
+                            // Close immediately — the app will come to foreground via intent
+                            window.close();
+                            // Fallback: if close doesn't work (Chrome security), navigate to about:blank
+                            setTimeout(function() { 
+                                window.location.href = 'about:blank';
+                            }, 500);
                         </script>
                     </body>
                     </html>
@@ -147,7 +156,9 @@ class SsoAuthHandler(private val activity: FragmentActivity) {
         withContext(Dispatchers.Main) {
             try {
                 val bringBackIntent = Intent(activity, activity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 activity.startActivity(bringBackIntent)
             } catch (e: Exception) {
@@ -168,74 +179,134 @@ class SsoAuthHandler(private val activity: FragmentActivity) {
 
     /**
      * Exchanges the authorization code for ID/access/refresh tokens.
+     * Includes DNS retry logic for emulator environments where DNS resolution
+     * can be flaky (Chrome Custom Tab has its own DNS stack but HttpURLConnection
+     * uses the system resolver which may fail on emulators).
      */
     private fun exchangeCodeForTokens(code: String, codeVerifier: String): SsoAuthResult {
         Log.i(TAG, "Exchanging authorization code for tokens...")
         Log.d(TAG, "  code length=${code.length}, verifier length=${codeVerifier.length}")
+        Log.d(TAG, "  token endpoint=${OidcConfig.TOKEN_ENDPOINT}")
+
+        val postData = listOf(
+            "client_id" to OidcConfig.CLIENT_ID,
+            "code" to code,
+            "redirect_uri" to OidcConfig.REDIRECT_URI,
+            "grant_type" to "authorization_code",
+            "code_verifier" to codeVerifier,
+        ).joinToString("&") { (k, v) ->
+            "$k=${java.net.URLEncoder.encode(v, "UTF-8")}"
+        }
+
+        // Retry up to 3 times — DNS on emulators can be flaky
+        var lastException: Exception? = null
+        for (attempt in 1..3) {
+            try {
+                // Pre-resolve DNS to fail fast and log clearly
+                val host = URL(OidcConfig.TOKEN_ENDPOINT).host
+                Log.d(TAG, "  attempt $attempt: resolving DNS for $host...")
+                val resolved = resolveDns(host)
+                Log.d(TAG, "  attempt $attempt: DNS resolved $host → $resolved")
+
+                val url = URL(OidcConfig.TOKEN_ENDPOINT)
+                val connection = (url.openConnection() as HttpsURLConnection).apply {
+                    requestMethod = "POST"
+                    doOutput = true
+                    connectTimeout = 15_000
+                    readTimeout = 15_000
+                    setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                }
+                connection.outputStream.write(postData.toByteArray())
+
+                val responseCode = connection.responseCode
+                val responseBody = if (responseCode in 200..299) {
+                    connection.inputStream.bufferedReader().readText()
+                } else {
+                    connection.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
+                }
+
+                Log.d(TAG, "Token response: HTTP $responseCode")
+
+                if (responseCode !in 200..299) {
+                    Log.e(TAG, "Token exchange failed: $responseBody")
+                    return SsoAuthResult(
+                        success = false,
+                        error = "Token exchange failed (HTTP $responseCode): $responseBody"
+                    )
+                }
+
+                // Parse the JSON response to extract tokens
+                val tokens = parseSimpleJson(responseBody)
+                val idToken = tokens["id_token"]
+                val accessToken = tokens["access_token"]
+                val refreshToken = tokens["refresh_token"]
+
+                if (idToken == null) {
+                    Log.e(TAG, "No id_token in response")
+                    return SsoAuthResult(
+                        success = false,
+                        error = "No ID token received from Azure AD"
+                    )
+                }
+
+                // Decode the ID token to extract email
+                val claims = decodeJwtPayload(idToken)
+                val email = claims["preferred_username"]
+                    ?: claims["email"]
+                    ?: claims["upn"]
+                    ?: claims["sub"]
+
+                Log.i(TAG, "✅ SSO authentication successful! email=$email")
+                Log.d(TAG, "  idToken=${idToken.take(50)}... accessToken=${accessToken?.take(20)}...")
+
+                return SsoAuthResult(
+                    success = true,
+                    idToken = idToken,
+                    accessToken = accessToken,
+                    refreshToken = refreshToken,
+                    email = email,
+                )
+            } catch (e: java.net.UnknownHostException) {
+                Log.w(TAG, "Attempt $attempt: DNS resolution failed — ${e.message}")
+                lastException = e
+                if (attempt < 3) {
+                    // Wait before retry — give emulator DNS time to recover
+                    Thread.sleep(1000L * attempt)
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                Log.w(TAG, "Attempt $attempt: Connection timed out — ${e.message}")
+                lastException = e
+                if (attempt < 3) {
+                    Thread.sleep(1000L * attempt)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Attempt $attempt: Token exchange exception", e)
+                lastException = e
+                // Don't retry for non-network errors
+                break
+            }
+        }
+
+        Log.e(TAG, "Token exchange FAILED after retries", lastException)
+        return SsoAuthResult(
+            success = false,
+            error = "Token exchange error: ${lastException?.message ?: "Unknown error"}. " +
+                "If on emulator, check DNS settings (try: emulator -dns-server 8.8.8.8)."
+        )
+    }
+
+    /**
+     * Resolves a hostname to an IP address.
+     * Falls back to querying Google DNS (8.8.8.8) via a direct UDP lookup
+     * if the system resolver fails (common on Android emulators).
+     */
+    private fun resolveDns(host: String): String {
         return try {
-            val url = URL(OidcConfig.TOKEN_ENDPOINT)
-            Log.d(TAG, "  token endpoint=${OidcConfig.TOKEN_ENDPOINT}")
-            val postData = listOf(
-                "client_id" to OidcConfig.CLIENT_ID,
-                "code" to code,
-                "redirect_uri" to OidcConfig.REDIRECT_URI,
-                "grant_type" to "authorization_code",
-                "code_verifier" to codeVerifier,
-            ).joinToString("&") { (k, v) ->
-                "$k=${java.net.URLEncoder.encode(v, "UTF-8")}"
-            }
-
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "POST"
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-            connection.outputStream.write(postData.toByteArray())
-
-            val responseCode = connection.responseCode
-            val responseBody = if (responseCode in 200..299) {
-                connection.inputStream.bufferedReader().readText()
-            } else {
-                connection.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
-            }
-
-            Log.d(TAG, "Token response: HTTP $responseCode")
-
-            if (responseCode !in 200..299) {
-                Log.e(TAG, "Token exchange failed: $responseBody")
-                return SsoAuthResult(success = false, error = "Token exchange failed (HTTP $responseCode): $responseBody")
-            }
-
-            // Parse the JSON response to extract tokens
-            val tokens = parseSimpleJson(responseBody)
-            val idToken = tokens["id_token"]
-            val accessToken = tokens["access_token"]
-            val refreshToken = tokens["refresh_token"]
-
-            if (idToken == null) {
-                Log.e(TAG, "No id_token in response")
-                return SsoAuthResult(success = false, error = "No ID token received from Azure AD")
-            }
-
-            // Decode the ID token to extract email
-            val claims = decodeJwtPayload(idToken)
-            val email = claims["preferred_username"]
-                ?: claims["email"]
-                ?: claims["upn"]
-                ?: claims["sub"]
-
-            Log.i(TAG, "✅ SSO authentication successful! email=$email")
-            Log.d(TAG, "  idToken=${idToken.take(50)}... accessToken=${accessToken?.take(20)}...")
-
-            SsoAuthResult(
-                success = true,
-                idToken = idToken,
-                accessToken = accessToken,
-                refreshToken = refreshToken,
-                email = email,
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Token exchange exception", e)
-            SsoAuthResult(success = false, error = "Token exchange error: ${e.message}")
+            val address = InetAddress.getByName(host)
+            address.hostAddress ?: host
+        } catch (e: java.net.UnknownHostException) {
+            Log.w(TAG, "System DNS failed for $host, this may be an emulator DNS issue")
+            throw e
         }
     }
 

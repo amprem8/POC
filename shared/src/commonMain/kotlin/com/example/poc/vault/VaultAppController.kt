@@ -17,10 +17,11 @@ data class VaultMessage(
 data class VaultConfig(
     val biometricEnabled: Boolean,
     val ssoAuthenticated: Boolean = false,
-    val ssoToken: String? = null,
+    // SSO tokens are NO LONGER persisted — kept in-memory only during the session.
+    // Only the email (for xVault user-id) and timestamp (for session validity) are stored.
     val ssoEmail: String? = null,
     val onboardingSeen: Boolean = false,
-    val ssoTokenTimestamp: Long = 0L, // epoch millis when SSO token was obtained
+    val ssoTokenTimestamp: Long = 0L, // epoch millis when SSO session was established
 ) {
     companion object {
         /** SSO session validity duration: 6 hours in milliseconds. */
@@ -63,16 +64,9 @@ class VaultAppController {
                 biometricAvailable = biometricAvailable,
                 biometricRequired = true,
             )
-            // SSO session still valid (within 6 hours) — skip login entirely
-            savedConfig.isSsoSessionValid(nowMillis) -> {
-                val target = if (!savedConfig.onboardingSeen) VaultRoute.Onboarding else VaultRoute.Main
-                VaultUiState(
-                    route = target,
-                    biometricAvailable = biometricAvailable,
-                    biometricEnabled = savedConfig.biometricEnabled,
-                )
-            }
-            // Existing user but session expired – go to login
+            // Existing user — ALWAYS require SSO login on every app open.
+            // The user must authenticate via Comcast SSO each time.
+            // biometric + onboarding are already done, so go straight to Login.
             else -> loginState()
         }
     }
@@ -103,10 +97,9 @@ class VaultAppController {
      * Called after user completes SSO sign-in via Azure AD OIDC + PKCE.
      * Stores the real SSO token and email, proceeds to onboarding or main.
      */
-    fun completeSsoSetup(token: String, email: String, nowMillis: Long): VaultActionResult {
+    fun completeSsoSetup(email: String, nowMillis: Long): VaultActionResult {
         val updatedConfig = (currentConfig ?: VaultConfig(biometricEnabled = true)).copy(
             ssoAuthenticated = true,
-            ssoToken = token,
             ssoEmail = email,
             ssoTokenTimestamp = nowMillis,
         )

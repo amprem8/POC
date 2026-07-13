@@ -26,10 +26,34 @@ class AndroidPlatformServices(
 
     override val serverBaseUrl: String = "http://10.0.2.2:$SERVER_PORT"
 
+    /**
+     * Biometric availability check.
+     * On emulators (detected via Build properties), biometric is always reported as
+     * unavailable so the flow skips to SSO-only authentication.
+     */
     override val biometricAvailable: Boolean
-        get() = BiometricManager.from(activity)
-            .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
-            BiometricManager.BIOMETRIC_SUCCESS
+        get() {
+            if (isEmulator()) return false
+            return BiometricManager.from(activity)
+                .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+                BiometricManager.BIOMETRIC_SUCCESS
+        }
+
+    // ── Emulator detection ───────────────────────────────────────────────
+
+    private fun isEmulator(): Boolean {
+        return (Build.FINGERPRINT.startsWith("generic")
+            || Build.FINGERPRINT.startsWith("unknown")
+            || Build.MODEL.contains("google_sdk")
+            || Build.MODEL.contains("Emulator")
+            || Build.MODEL.contains("Android SDK built for x86")
+            || Build.MANUFACTURER.contains("Genymotion")
+            || Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")
+            || Build.PRODUCT.contains("sdk")
+            || Build.PRODUCT.contains("emulator")
+            || Build.HARDWARE.contains("goldfish")
+            || Build.HARDWARE.contains("ranchu"))
+    }
 
     // ── Vault config ────────────────────────────────────────────────────
 
@@ -38,11 +62,17 @@ class AndroidPlatformServices(
 
     override fun saveVaultConfig(config: VaultConfig) {
         preferences.edit { putString("vault_config", encodeVaultConfig(config)) }
+        // When SSO email is available, set xVault user context
+        config.ssoEmail?.let { email ->
+            PasswordRepository.setUserFromEmail(email)
+        }
     }
 
     // ── Biometric ─────────────────────────────────────────────────────────
 
     override suspend fun promptBiometric(promptTitle: String, promptSubtitle: String): Boolean {
+        // On emulator: always succeed (SSO is the real gate, biometric is skipped)
+        if (isEmulator()) return true
         if (!biometricAvailable) return false
         return suspendCancellableCoroutine { continuation ->
             val prompt = BiometricPrompt(
@@ -110,5 +140,15 @@ class AndroidPlatformServices(
 
     override fun enableOverlayMonitoringAfterLogin() {
         VaultTrace.i("AndroidPlatform", "enableOverlayMonitoringAfterLogin no-op; saving is owned by AutofillService")
+    }
+
+    // ── xVault sync ─────────────────────────────────────────────────────
+
+    /**
+     * Sync credentials from xVault after login.
+     * Called from the UI layer after SSO authentication completes.
+     */
+    override suspend fun syncFromXVault(): Boolean {
+        return PasswordRepository.syncFromXVault()
     }
 }

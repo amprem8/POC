@@ -36,7 +36,7 @@ class SharedCommonTest {
         assertNotNull(biometricResult.persistedConfig)
         assertTrue(biometricResult.persistedConfig.biometricEnabled)
 
-        val ssoResult = controller.completeSsoSetup(token = "test-id-token", email = "user@comcast.net", nowMillis = NOW)
+        val ssoResult = controller.completeSsoSetup(email = "user@comcast.net", nowMillis = NOW)
         assertEquals(VaultRoute.Onboarding, ssoResult.uiState.route)
         assertNotNull(ssoResult.persistedConfig)
         assertTrue(ssoResult.persistedConfig.ssoAuthenticated == true)
@@ -44,19 +44,19 @@ class SharedCommonTest {
     }
 
     @Test
-    fun `existing user with valid session skips login`() {
+    fun `existing user always goes to login on app open`() {
         val config = VaultConfig(
             biometricEnabled = true,
             ssoAuthenticated = true,
-            ssoToken = "dummy-token",
             ssoEmail = "user@comcast.net",
             onboardingSeen = true,
-            ssoTokenTimestamp = RECENT,
+            ssoTokenTimestamp = RECENT, // even with valid session, must login again
         )
         val controller = VaultAppController()
 
         val state = controller.bootstrap(savedConfig = config, biometricAvailable = true, nowMillis = NOW)
-        assertEquals(VaultRoute.Main, state.route)
+        // User must always SSO login on every app open
+        assertEquals(VaultRoute.Login, state.route)
     }
 
     @Test
@@ -64,7 +64,6 @@ class SharedCommonTest {
         val config = VaultConfig(
             biometricEnabled = true,
             ssoAuthenticated = true,
-            ssoToken = "dummy-token",
             ssoEmail = "user@comcast.net",
             onboardingSeen = true,
             ssoTokenTimestamp = EXPIRED,
@@ -80,7 +79,6 @@ class SharedCommonTest {
         val config = VaultConfig(
             biometricEnabled = true,
             ssoAuthenticated = true,
-            ssoToken = "dummy-token",
             ssoEmail = "user@comcast.net",
             onboardingSeen = true,
             ssoTokenTimestamp = RECENT,
@@ -98,7 +96,6 @@ class SharedCommonTest {
         val config = VaultConfig(
             biometricEnabled = true,
             ssoAuthenticated = true,
-            ssoToken = "dummy-token",
             ssoEmail = "user@comcast.net",
             onboardingSeen = true,
             ssoTokenTimestamp = EXPIRED,
@@ -118,7 +115,6 @@ class SharedCommonTest {
         val config = VaultConfig(
             biometricEnabled = true,
             ssoAuthenticated = true,
-            ssoToken = "dummy-token",
             ssoEmail = "user@comcast.net",
             onboardingSeen = true,
             ssoTokenTimestamp = EXPIRED, // even expired, SSO login refreshes the token
