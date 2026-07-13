@@ -304,10 +304,7 @@ object PasswordRepository {
                 put("id", e.id)
                 put("siteName", e.siteName)
                 put("username", e.username)
-                // Password is NOT stored locally — only in xVault.
-                // We store a marker so we know this entry exists locally but
-                // actual password is fetched from xVault on sync.
-                put("password", "••••••••")
+                put("password", e.password)  // Safe: EncryptedSharedPreferences encrypts at rest (AES-256-GCM)
                 put("loginUrl", e.loginUrl)
                 put("dateModified", e.dateModified)
                 put("notes", e.notes)
